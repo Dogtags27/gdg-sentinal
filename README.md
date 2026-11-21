@@ -2,8 +2,6 @@
 
 Multilingual (EN/DE) incident triage, escalation gate and precedent-grounded reply drafts, built on the `Tobi-Bueck/customer-support-tickets` dataset.
 
-Live task board with clock: https://claude.ai/artifact/FfMrw1sFKRgkVcVVhUYtX2
-
 ## Stack (locked)
 
 | Part | Choice |
@@ -11,27 +9,113 @@ Live task board with clock: https://claude.ai/artifact/FfMrw1sFKRgkVcVVhUYtX2
 | Frontend | React + Vite (JavaScript), Tailwind, Recharts |
 | Gateway | Go 1.22+ (stdlib `ServeMux`): validation, PII masking, timing |
 | Engine | Python FastAPI: language detection, classify, retrieve, gate, draft, validate |
-| Vector DB | **Qdrant** (Docker, next to the engine). Runner-up: pgvector. Fallback: FAISS |
+| Vector DB | **Redis** with the Query Engine (RediSearch), self-hosted in Docker on the AWS EC2 box. HNSW cosine index over chunk hashes (level 2) plus queue-node hashes (level 1). Fallback: FAISS loaded from the embeddings parquet |
+| Retrieval | **Hierarchical RAG**: queue first, then chunks inside it, with a global fallback when routing is unsure |
 | Embeddings | `gemini-embedding-2`, 768 dims, same settings for KB and live queries |
 | Draft model | Current Gemini Flash, set in `GEN_MODEL` |
 | Classifier | TF-IDF + logistic regression, blended with retrieval votes, temperature-calibrated |
-| Storage | Cloudflare R2 for raw CSV, splits, embeddings, models, Qdrant snapshot, reports |
+| Storage | Cloudflare R2 for raw CSV, splits, embeddings, models, Redis RDB snapshot, reports |
 | Deploy | AWS EC2 + docker-compose. **Hriday only** |
 
-Why Qdrant: payload filters (language, queue, type), snapshot to R2 and restore in seconds, same container on laptops and AWS, built-in dashboard for debugging retrieval.
+Why Redis:
+- One container, the same on laptops and on EC2. Only the Python engine and the ML jobs talk to it; the Go gateway never does.
+- Each chunk is a hash with TAG fields (queue, type, language), so the level-2 search is one filtered KNN query inside the routed queues.
+- `HINCRBY` makes the `queried_count` update atomic.
+- An RDB snapshot goes to R2 and restores by dropping the file in the data folder.
+- RedisInsight (shipped in the `redis/redis-stack` image) is the debugging dashboard.
+- Trade-offs: everything lives in memory (about 150 MB of raw vectors for the ~49k chunks; budget under 1 GB with the HNSW graph and text, which a t3.large handles easily), and the port must never be public.
 
 ## Flow
 
-React console → Go gateway (validate, mask PII) → Python engine → language → classify → retrieve top-k from Qdrant → gate → grounded draft → validate citations and numbers → final gate + burst check.
+React console → Go gateway (validate, mask PII) → Python engine → language → embed query → classify → level-1 route to queue(s) → level-2 chunk search inside them (global fallback) → gate → grounded draft → validate citations and numbers → final gate + burst check.
+
+## Hierarchical RAG
+
+Not a flat index. **Level 1** is the queue, **level 2** is the ticket chunks inside it.
+
+```
+Knowledge base (about 49,400 chunks)
+├── Queue "Technical Support"   node = centroid vector + chunk count
+│   ├── chunk TKT-00012         queue, type, priority, subject, body, tags,
+│   ├── chunk TKT-00047         language, answer, queried_count, vector_embedding
+│   └── …
+├── Queue "Billing and Payments"
+├── Queue "IT Support"
+└── … (queue list comes from the data)
+```
+
+**Chunk fields**
+
+| Field | Redis hash field, index | Notes |
+|---|---|---|
+| ticket_id | `ticket_id`, TAG (the key is `chunk:<ticket_id>`) | Added to the list: drafts must cite `[TKT-xxxxx]` |
+| queue | `queue`, TAG | Level-1 parent, routing and filter key |
+| type | `type`, TAG | Incident, Request, Problem, Change |
+| priority | `priority`, TAG | high, medium, low |
+| subject | `subject`, not indexed | Empty string when missing, never null |
+| body | `body`, not indexed | Cleaned text; about 6,000 characters embedded |
+| tags | `tags`, TAG, comma-separated | Redis hashes are flat, so tag_1..tag_8 (nulls removed) are stored as `a,b,c` |
+| language | `language`, TAG | en or de |
+| answer | `answer`, not indexed | KB tickets only, never the test split |
+| queried_count | `queried_count`, NUMERIC | Starts at 0, +1 (atomic `HINCRBY`) each time returned as a precedent. Telemetry only; not used for ranking in the MVP; frozen during evaluation |
+| vector_embedding | `vector_embedding`, VECTOR HNSW, FLOAT32, 768, COSINE | Embedding of subject + body, never the answer. Stored as raw float32 bytes |
+
+**Redis layout**
+
+```
+# Level 2: one hash per ticket
+HSET chunk:TKT-00012 ticket_id TKT-00012 queue "Technical Support" type Incident priority high
+     subject "..." body "..." tags "vpn,network" language de answer "..." queried_count 0
+     vector_embedding <768 float32 bytes>
+
+FT.CREATE idx:chunks ON HASH PREFIX 1 chunk: SCHEMA
+  ticket_id TAG  queue TAG  type TAG  priority TAG  language TAG
+  tags TAG SEPARATOR ","  queried_count NUMERIC SORTABLE
+  vector_embedding VECTOR HNSW 6 TYPE FLOAT32 DIM 768 DISTANCE_METRIC COSINE
+
+# Level 1: one hash per queue (a handful; loaded into memory at boot, no index needed)
+HSET queue:technical_support queue "Technical Support" chunk_count 9120
+     type_mix "{...}" top_tags "..." vector_embedding <centroid float32 bytes>
+
+# Level 2 search inside the routed queues
+FT.SEARCH idx:chunks "(@queue:{Technical\ Support|IT\ Support})=>[KNN 5 @vector_embedding $q AS dist]"
+  PARAMS 2 q <query bytes>  SORTBY dist  DIALECT 2
+
+# Global search (fallback and classifier votes)
+FT.SEARCH idx:chunks "*=>[KNN 10 @vector_embedding $q AS dist]" PARAMS 2 q <query bytes> SORTBY dist DIALECT 2
+```
+
+**Redis gotchas**
+- Redis returns cosine **distance**. Similarity = 1 − dist. The thresholds in `policy.yaml` are similarity values.
+- Spaces and punctuation in TAG filter values must be escaped (`Technical\ Support`). Write one `tag_escape()` helper in `retrieval/search.py` with a unit test.
+- When tuning on kb_val, ask for k+1 results and drop the ticket's own ID in Python.
+- Run the `redis/redis-stack` image (or Redis 8 with the Query Engine), pinned to one version, with `requirepass`, on the Docker network only. Port 6379 is never opened in the EC2 security group.
+
+**Retrieval flow per ticket**
+
+1. Embed the query once (same model and settings as the KB).
+2. Global top-10 search over all chunks. Feeds the classifier's neighbour vote and is the fallback result.
+3. Classify (TF-IDF + neighbour vote) to get queue probabilities.
+4. **Level 1, route:** score each queue as 0.6 × classifier probability + 0.4 × cosine to the queue centroid (starting weights, tuned on kb_val). Keep the top 2 queues, or only the top 1 if it scores at least 0.80.
+5. **Level 2, search:** Redis KNN search filtered to the routed queues (`@queue:{...}`), k = 5.
+6. **Fallback:** if the routed top-1 similarity is below `min_top1_similarity`, or more than 0.05 under the global top-1, use the global results and set `fallback_global`. If those are weak too, the gate adds NO_PRECEDENT.
+7. After the response, `HINCRBY chunk:<id> queried_count 1` on the returned chunks, pipelined, in the background.
+
+**Decisions**
+- One chunk is one ticket (bodies are short, no splitting).
+- Queue centroids are built from KB chunks only.
+- Queue votes use the unfiltered search, since filtered results only echo the routed queue.
+- ML reports flat vs hierarchical agreement@5, routing accuracy and latency. It answers "why hierarchical?" in Q&A.
+- Evaluation runs with `UPDATE_QUERIED_COUNT=false`.
 
 ## Team and folders
 
 | Person | Role | Owns |
 |---|---|---|
-| Hriday | Lead, Go gateway, RAG drafting, **all deploys** | `contracts/`, `infra/`, `backend/`, `engine/app/{main,pipeline,generate}` |
-| Full-stack dev | React console, Go PII guardrail | `frontend/`, `backend/internal/pii/` |
-| Data analyst | EDA, indexing, escalation policy, Insights charts | `analytics/`, `ml/indexing/`, `engine/app/policy/`, `frontend/src/features/insights/` |
-| ML engineer | Split, classifiers, calibration, evaluation | `ml/`, `engine/app/analyze/` |
+| Hriday | Lead, Python engine API, RAG drafting, **all deploys** | `contracts/`, `infra/`, `engine/app/{main,pipeline,common,generate}` |
+| Full-stack dev | React console, Go gateway, PII guardrail | `frontend/`, `backend/` |
+| Data analyst | EDA, escalation policy, burst detection, Insights charts | `analytics/`, `engine/app/policy/`, `frontend/src/features/insights/` |
+| ML engineer | Split, classifiers, hierarchical RAG index and retrieval, evaluation | `ml/`, `engine/app/{analyze,retrieval}/` |
 | QA | Test plan, golden set, audits, demo script (no code) | `qa/`, `docs/demo-script.md` |
 
 Rules:
@@ -39,13 +123,14 @@ Rules:
 - `git pull --rebase` every 30 minutes; push small commits.
 - Contract changes go through Hriday.
 - Never commit `.env`, data or model files. They live in R2.
+- Run Python from the repo root with `PYTHONPATH=engine` so `ml/` can import the shared Gemini client.
 
 ## Timeline
 
 | Time | Phase | Check-in |
 |---|---|---|
-| 0:00–0:25 | Kickoff and contracts | Repo, contract, keys, local Qdrant exist |
-| 0:25–1:30 | Foundations | **Sync 1 (1:30):** mock UI through Go, split in R2, KB embedded, first macro-F1, skeleton live on AWS |
+| 0:00–0:25 | Kickoff and contracts | Repo, contract, keys, local Redis exist |
+| 0:25–1:30 | Foundations | **Sync 1 (1:30):** mock UI through Go, split in R2, KB embedded and hierarchy loaded in Redis, first macro-F1, skeleton live on AWS |
 | 1:30–3:00 | Core build | **Sync 2 (3:00):** real pipeline end to end |
 | 3:00–4:00 | Integrate, evaluate, bonus | **Sync 3 (4:00):** deployed v2, golden-set pass rate, holdout metrics, cut scope |
 | 4:00–4:30 | Harden and freeze | Final deploy by 4:15, **code freeze 4:20** |
@@ -54,98 +139,107 @@ Rules:
 ## Tasks
 
 ### Everyone
-- [ ] ALL-01 Kickoff: walk the plan, contract, folder ownership (0:00)
-- [ ] ALL-02 Code freeze at 4:20
-- [ ] ALL-03 Rehearsal 1 at 4:30, timed
-- [ ] ALL-04 Rehearsal 2 at 4:45, then submit
+- [ ] ALL-01 Kickoff: walk the plan, the contract and folder ownership (**critical**) · 0:00–0:25
+- [ ] ALL-02 Code freeze at 4:20 (**critical**) · 4:00–4:30
+- [ ] ALL-03 Rehearsal 1 at 4:30, timed (**critical**) · 4:30–5:00
+- [ ] ALL-04 Rehearsal 2 at 4:45, then submit (**critical**) · 4:30–5:00
 
 ### Hriday
-- [ ] H-01 Create repo and folder skeleton
-- [ ] H-02 Freeze API contract v1 (**critical**)
-- [ ] H-03 API keys, billing, R2 bucket (**critical**)
-- [ ] H-04 Local Qdrant via docker-compose
-- [ ] H-05 Go gateway skeleton (**critical**)
-- [ ] H-06 Mock mode so the UI is never blocked
-- [ ] H-07 Engine skeleton and pipeline stubs (**critical**)
-- [ ] H-08 Walking-skeleton deploy on AWS (by 1:30)
-- [ ] H-09 Draft generation with Gemini (**critical**)
-- [ ] H-10 Grounding prompt (**critical**)
-- [ ] H-11 Draft validator (**critical**)
-- [ ] H-12 Degraded mode when the LLM fails
-- [ ] H-13 Point the gateway at the real engine
-- [ ] H-14 Deploy v2 with the real pipeline (by 3:15, **critical**)
-- [ ] H-15 Run the 3:00 sync and cut scope
-- [ ] H-16 Final production deploy (by 4:15, **critical**)
-- [ ] H-17 Top-level README
+- [ ] H-01 Create the repo and folder skeleton · 0:00–0:25
+- [ ] H-02 Freeze API contract v1 (**critical**) · 0:00–0:25
+- [ ] H-03 API keys, billing and the R2 bucket (**critical**) · 0:00–0:25
+- [ ] H-04 Local Redis (Redis Stack) via docker-compose · 0:00–0:25
+- [ ] H-05 Engine skeleton and pipeline stubs (**critical**) · 0:25–1:30
+- [ ] H-06 Engine settings, Pydantic schemas and R2 artifact loader (**critical**) · 0:25–1:30
+- [ ] H-07 Shared Gemini client (embed and generate) (**critical**) · 0:25–1:30
+- [ ] H-08 Walking-skeleton deploy on AWS (deploy, Hriday only) · 0:25–1:30
+- [ ] H-09 Draft generation with Gemini (**critical**) · 1:30–3:00
+- [ ] H-10 Grounding prompt (**critical**) · 1:30–3:00
+- [ ] H-11 Draft validator (**critical**) · 1:30–3:00
+- [ ] H-12 Degraded mode when the LLM fails · 1:30–3:00
+- [ ] H-13 Wire the real pipeline: orchestration, timeouts, per-stage timing (**critical**) · 1:30–3:00
+- [ ] H-14 Engine health, readiness and structured logs · 1:30–3:00
+- [ ] H-15 Deploy v2 with the real pipeline (**critical**, deploy, Hriday only) · 3:00–4:00
+- [ ] H-16 Run the 3:00 integration sync and cut scope · 3:00–4:00
+- [ ] H-17 queried_count tracking and most-queried endpoint · 3:00–4:00
+- [ ] H-18 Engine tests (pytest) · 3:00–4:00
+- [ ] H-19 Final production deploy (**critical**, deploy, Hriday only) · 4:00–4:30
+- [ ] H-20 Top-level README · 4:00–4:30
 
 ### Full-stack dev
-- [ ] FS-01 Scaffold the React app
-- [ ] FS-02 App shell with health indicator
-- [ ] FS-03 Ticket input panel with sample menu
-- [ ] FS-04 API client with timeouts and readable errors
-- [ ] FS-05 Classification cards and escalation badge
-- [ ] FS-06 Precedents panel
-- [ ] FS-07 Draft panel (text only, never inject HTML)
-- [ ] FS-08 Latency strip
-- [ ] FS-09 Integrate with the real gateway (**critical**)
-- [ ] FS-10 Major-incident banner and "Simulate outage" button (bonus)
-- [ ] FS-11 History drawer
-- [ ] FS-12 PII guardrail in the Go gateway (bonus)
-- [ ] FS-13 Insights tab shell and shared chart components
-- [ ] FS-14 Polish and edge states
+- [ ] FS-01 Scaffold the React app · 0:00–0:25
+- [ ] FS-02 Go gateway skeleton (**critical**) · 0:25–1:30
+- [ ] FS-03 Mock mode so the UI is never blocked · 0:25–1:30
+- [ ] FS-04 App shell with a health indicator · 0:25–1:30
+- [ ] FS-05 Ticket input panel · 0:25–1:30
+- [ ] FS-06 API client with timeouts and readable errors · 0:25–1:30
+- [ ] FS-07 Classification cards and the escalation badge · 0:25–1:30
+- [ ] FS-08 Point the gateway at the real engine (**critical**) · 1:30–3:00
+- [ ] FS-09 Precedents panel with routing path · 1:30–3:00
+- [ ] FS-10 Draft panel · 1:30–3:00
+- [ ] FS-11 Latency strip · 1:30–3:00
+- [ ] FS-12 Integrate with the real gateway (**critical**) · 1:30–3:00
+- [ ] FS-13 Major-incident banner and ‘Simulate outage’ button (bonus) · 3:00–4:00
+- [ ] FS-14 History drawer · 3:00–4:00
+- [ ] FS-15 PII guardrail in the Go gateway (bonus) · 3:00–4:00
+- [ ] FS-16 Go: serve the built frontend and the Insights JSON · 3:00–4:00
+- [ ] FS-17 Go: rate limit on the triage endpoint (bonus) · 3:00–4:00
+- [ ] FS-18 Insights tab shell and shared chart components · 3:00–4:00
+- [ ] FS-19 Polish and edge states · 4:00–4:30
 
 ### Data analyst
-- [ ] DA-01 Pull the raw CSV, open the EDA notebook
-- [ ] DA-02 EDA with JSON exports for the Insights tab (`python3 analytics/eda_pipeline.py` then `python3 analytics/verify_operations_insights.py`)
-- [ ] DA-03 Embed the knowledge base (**critical**, by 1:30)
-- [ ] DA-04 Load the Qdrant collection and snapshot it (**critical**)
-- [ ] DA-05 Retrieval quality and similarity threshold (**critical**)
-- [ ] DA-06 Escalation gate in `engine/app/policy/gate.py` (**critical**)
-- [ ] DA-07 Keyword lists for injection, money, security, legal (EN + DE)
-- [ ] DA-08 Outage burst detector (bonus)
-- [ ] DA-09 Insights exports: model and operations
-- [ ] DA-10 Insights charts in React (with Full-stack)
-- [ ] DA-11 Slide visuals and architecture diagram
+- [ ] DA-01 Pull the raw CSV and open the EDA notebook · 0:00–0:25
+- [ ] DA-02 EDA with exports for the Insights tab · 0:25–1:30
+- [ ] DA-03 Escalation gate (engine/app/policy/gate.py) (**critical**) · 1:30–3:00
+- [ ] DA-04 Keyword lists for injection, money, security and legal (EN + DE) · 1:30–3:00
+- [ ] DA-05 Outage burst detector (bonus) · 3:00–4:00
+- [ ] DA-06 Insights exports: model and operations · 3:00–4:00
+- [ ] DA-07 Insights charts in React (with Full-stack) · 3:00–4:00
+- [ ] DA-08 Hierarchy explorer in Insights · 3:00–4:00
+- [ ] DA-09 Slide visuals and architecture diagram · 4:00–4:30
 
 ### ML engineer
-- [ ] ML-01 Python environments for `ml/` and `engine/`
-- [ ] ML-02 Load the exact dataset file, inspect labels (**critical**)
-- [ ] ML-03 Lock the 80/20 split as the brief specifies (**critical**, by 0:45)
-- [ ] ML-04 Clean text, normalise labels
-- [ ] ML-05 Baseline classifiers for type, queue, priority (**critical**)
-- [ ] ML-06 Language detection
-- [ ] ML-07 Engine: real classify and retrieve stages (**critical**)
-- [ ] ML-08 Retrieval-vote ensemble
-- [ ] ML-09 Confidence calibration
-- [ ] ML-10 Priority threshold tuned for high-priority recall (**critical**)
-- [ ] ML-11 Holdout evaluation script (**critical**)
-- [ ] ML-12 Latency benchmark
-- [ ] ML-13 Generation audit sample (with QA)
-- [ ] ML-14 README: metrics and method
+- [ ] ML-01 Python environments for ml/ and engine/ · 0:00–0:25
+- [ ] ML-02 Load the exact dataset file and inspect the labels (**critical**) · 0:25–1:30
+- [ ] ML-03 Lock the 80/20 split exactly as the brief specifies (**critical**) · 0:25–1:30
+- [ ] ML-04 Clean text and normalise labels · 0:25–1:30
+- [ ] ML-05 Baseline classifiers for type, queue and priority (**critical**) · 0:25–1:30
+- [ ] ML-06 Language detection · 0:25–1:30
+- [ ] ML-07 Build the chunks and embed the knowledge base (**critical**) · 0:25–1:30
+- [ ] ML-08 Build the hierarchy in Redis (index, queue nodes) and snapshot it (**critical**) · 0:25–1:30
+- [ ] ML-09 Engine: real classify stage (**critical**) · 1:30–3:00
+- [ ] ML-10 Engine: hierarchical retriever (router and chunk search) (**critical**) · 1:30–3:00
+- [ ] ML-11 Retrieval-vote ensemble · 1:30–3:00
+- [ ] ML-12 Confidence calibration · 1:30–3:00
+- [ ] ML-13 Priority threshold tuned for high-priority recall (**critical**) · 1:30–3:00
+- [ ] ML-14 Hierarchical retrieval quality, routing and thresholds (**critical**) · 1:30–3:00
+- [ ] ML-15 Holdout evaluation script (**critical**) · 3:00–4:00
+- [ ] ML-16 Latency benchmark · 3:00–4:00
+- [ ] ML-17 Generation audit sample (with QA) · 3:00–4:00
+- [ ] ML-18 README: metrics and method · 4:00–4:30
 
 ### QA
-- [ ] QA-01 Bug tracker, labels, shared test sheet
-- [ ] QA-02 Golden test set: 30 unseen tickets with expected outcomes (**critical**)
-- [ ] QA-03 Test plan
-- [ ] QA-04 Review the contract from the operator's side
-- [ ] QA-05 Test the deployed mock UI
-- [ ] QA-06 Hallucination audit rubric
-- [ ] QA-07 Run the golden set on the real pipeline (**critical**)
-- [ ] QA-08 Score 15 drafts with the rubric
-- [ ] QA-09 Leakage audit sign-off
-- [ ] QA-10 Demo script draft
-- [ ] QA-11 Final regression and backup video (**critical**)
-- [ ] QA-12 Judge Q&A sheet
+- [ ] QA-01 Bug tracker, labels and the shared test sheet · 0:00–0:25
+- [ ] QA-02 Golden test set: 30 unseen tickets with expected outcomes (**critical**) · 0:25–1:30
+- [ ] QA-03 Test plan · 0:25–1:30
+- [ ] QA-04 Review the contract from the operator’s side · 0:25–1:30
+- [ ] QA-05 Test the deployed mock UI · 1:30–3:00
+- [ ] QA-06 Hallucination audit rubric · 1:30–3:00
+- [ ] QA-07 Run the golden set on the real pipeline (**critical**) · 3:00–4:00
+- [ ] QA-08 Score 15 drafts with the hallucination rubric · 3:00–4:00
+- [ ] QA-09 Leakage audit sign-off · 3:00–4:00
+- [ ] QA-10 Demo script draft · 3:00–4:00
+- [ ] QA-11 Final regression and backup video (**critical**) · 4:00–4:30
+- [ ] QA-12 Judge Q&A sheet · 4:00–4:30
 
 ### Stretch (only if ahead)
 - [ ] SX-01 Stream results with server-sent events (Hriday)
-- [ ] SX-02 Hybrid retrieval, BM25 + dense (ML)
-- [ ] SX-03 UMAP ticket map (Data analyst)
-- [ ] SX-04 Operator feedback on drafts (Full-stack)
-- [ ] SX-05 Fine-tuned multilingual encoder (ML)
-- [ ] SX-06 Cost per ticket (Hriday)
-
-Full details, "done when" checks and dependencies for each task are on the live board.
+- [ ] SX-02 Hybrid retrieval (ML engineer)
+- [ ] SX-03 Third level and popularity prior (ML engineer)
+- [ ] SX-04 Ticket map (Data analyst)
+- [ ] SX-05 Operator feedback on drafts (Full-stack)
+- [ ] SX-06 Fine-tuned multilingual encoder (ML engineer)
+- [ ] SX-07 Cost per ticket (Hriday)
 
 ## Escalation gate
 
@@ -171,6 +265,7 @@ Any P1 reason → **ESCALATE_ONCALL**. Else any P2 reason → **HUMAN_REVIEW**. 
 - Only the 80% KB gets indexed or trained on. `kb_val` (last 10% of KB) is used for tuning and calibration.
 - The 20% test set keeps only `ticket_id`, `subject`, `body` for inference. Its `answer` column is dropped and never saved. Labels are read only by the final scorer.
 - Some dataset copies have 5 priority levels. Map them to high/medium/low and document the mapping.
+- Queue centroids and chunks are built from the KB split only. `queried_count` updates are off during evaluation.
 
 ## R2 layout
 
@@ -180,13 +275,13 @@ sentineldesk-artifacts/
   splits/v1/  kb_train, test_inputs, test_labels, split_manifest.json
   embeddings/v1/  kb_768, test_768
   models/v1/  classifiers, labels, calibration, thresholds
-  qdrant/     kb_tickets_v1.snapshot
+  redis/      dump_v1.rdb (chunks, queue nodes, index definitions)
   reports/v1/ metrics, latency, insights JSON
 ```
 
 ## Ports
 
-5173 React dev, 8080 Go gateway, 8000 Python engine (private), 6333 Qdrant (private).
+5173 React dev, 8080 Go gateway, 8000 Python engine (private), 6379 Redis (private, password-protected), 8001 RedisInsight (private, reach it through an SSH tunnel).
 
 ## Env vars
 
@@ -195,8 +290,11 @@ GEMINI_API_KEY=
 EMBED_MODEL=gemini-embedding-2
 EMBED_DIM=768
 GEN_MODEL=
-QDRANT_URL=http://qdrant:6333
-QDRANT_COLLECTION=kb_tickets_v1
+REDIS_URL=redis://:<password>@redis:6379
+REDIS_CHUNK_INDEX=idx:chunks
+REDIS_CHUNK_PREFIX=chunk:
+REDIS_QUEUE_PREFIX=queue:
+UPDATE_QUERIED_COUNT=true
 POLICY_PATH=config/policy.yaml
 R2_ENDPOINT=
 R2_ACCESS_KEY_ID=
@@ -214,6 +312,9 @@ PORT=8080
 - **Gemini down on stage:** 8 s timeout, extractive fallback, backup demo video.
 - **Cold start:** load models at boot; warm-up request after every deploy.
 - **Merge conflicts:** folder ownership, pull every 30 minutes.
+- **Redis exposed or out of memory:** no public 6379, `requirepass`, Docker network only; check `INFO memory` after loading the KB; keep the RDB snapshot in R2 so a rebuild takes minutes, not a re-embed.
+- **Wrong queue routing:** search the top 2 queues and fall back to the global search when the routed match is weak.
+- **Full-stack overload (React + Go):** Hriday takes the Go PII guardrail and rate limit if sync 1 shows them late; cut bonus tasks first.
 
 ## 5-minute demo
 
