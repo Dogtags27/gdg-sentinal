@@ -1,4 +1,4 @@
-// Package pii masks personal data in ticket text before it leaves the gateway (FS-12).
+// Package pii masks personal data in ticket text before it leaves the gateway (FS-15).
 //
 // The gateway masks subject and body separately, then reports the counts:
 //
