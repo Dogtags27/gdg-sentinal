@@ -3,7 +3,7 @@ import { Inbox, Layers, Loader2, Plus } from 'lucide-react';
 import { ConfidenceBar, LangBadge, PriorityBadge, ReasonChip } from '../components/Badges.jsx';
 import { useTickets } from '../state/tickets.jsx';
 import { PRIORITIES, WORKFLOW } from '../lib/constants.js';
-import { overallConfidence, timeAgo } from '../lib/format.js';
+import { overallConfidence, ticketTitle, timeAgo } from '../lib/format.js';
 import { ticketHref } from '../lib/useHashRoute.js';
 
 const COLUMN_ACCENT = {
@@ -150,7 +150,7 @@ function Card({ t, dragging, onDragStart, onDragEnd, onMove }) {
         <LangBadge code={t.language.code} />
         <span className="ml-auto"><PriorityBadge priority={c.priority.label} /></span>
       </div>
-      <a href={ticketHref(t.ticket_id)} className="mt-1.5 line-clamp-2 block text-[12.5px] leading-snug font-medium text-ink hover:text-brand-700">{t.subject}</a>
+      <a href={ticketHref(t.ticket_id)} className="mt-1.5 line-clamp-2 block text-[12.5px] leading-snug font-medium text-ink hover:text-brand-700">{ticketTitle(t)}</a>
       <div className="mt-1 text-[11.5px] text-ink-2">{c.type.label} · {c.queue.label}</div>
       {shown.length > 0 && (
         <div className="mt-1.5 flex flex-wrap gap-1">

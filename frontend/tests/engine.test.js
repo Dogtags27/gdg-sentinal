@@ -1,8 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { analyze, detectLanguage, maskPII, mergeEntities } from '../src/api/mockEngine.js';
-import { ApiError, normalizeTriage, serverMessage } from '../src/api/normalize.js';
+import { analyze, createMasker, detectLanguage, maskPII } from '../src/api/mockEngine.js';
+import { ticketTitle } from '../src/lib/format.js';
+import { ApiError, describeError, normalizeTriage, serverMessage } from '../src/api/normalize.js';
 import { SAMPLES, OUTAGE_BURST } from '../src/data/samples.js';
 import { buildSeedTickets } from '../src/data/mockTickets.js';
 
@@ -38,7 +39,8 @@ test('outage burst tickets join the cluster and escalate', () => {
     const r = analyze({ ticket_id: 'T', ...s }, { burst: true });
     assert.equal(r.gate.decision, 'ESCALATE_ONCALL', s.subject);
     assert.ok(codes(r).includes('ACTIVE_OUTAGE'), s.subject);
-    assert.equal(r.burst?.cluster_id, 'BURST-VPN-01');
+    assert.equal(r.burst?.cluster_id, 'BURST-VPN-SERVICE');
+    assert.ok(r.burst.ticket_count >= 1 && r.burst.queue && r.burst.lead_term === 'vpn');
   }
 });
 
@@ -47,7 +49,8 @@ test('keywords do not over-fire on harmless mentions', () => {
   assert.ok(!codes(analyze({ subject: 'Training', body: 'We would like phishing awareness training for staff.' })).includes('SECURITY_INCIDENT'));
 });
 
-// Same table as the Go gateway's tests, so the mock and backend/internal/pii agree.
+// Same table as the Go gateway's tests, so the mock and backend/internal/pii agree. It lives in backend/
+// because the Go package owns the rules; this test needs the whole repo checked out.
 const PII_CASES = JSON.parse(readFileSync(new URL('../../backend/internal/pii/testdata/cases.json', import.meta.url), 'utf8'));
 
 test('PII masking matches the gateway cases', () => {
@@ -58,13 +61,12 @@ test('PII masking matches the gateway cases', () => {
   }
 });
 
-test('PII counts from subject and body are merged per type', () => {
-  const r = analyze({ subject: 'Mail a@b.de', body: 'or c@d.de, call 030 1234567' });
-  assert.deepEqual(r.pii.masked, [{ type: 'EMAIL', count: 2 }, { type: 'PHONE', count: 1 }]);
-  assert.deepEqual(mergeEntities([{ type: 'EMAIL', count: 1 }], [{ type: 'PHONE', count: 2 }, { type: 'EMAIL', count: 1 }]), [
-    { type: 'EMAIL', count: 2 },
-    { type: 'PHONE', count: 2 },
-  ]);
+test('PII numbering is shared by subject and body', () => {
+  const r = analyze({ subject: 'Mail a@b.de', body: 'or c@d.de or a@b.de, call 030 1234567' });
+  assert.equal(r.subject, 'Mail [EMAIL_1]');
+  assert.equal(r.body, 'or [EMAIL_2] or [EMAIL_1], call [PHONE_1]');
+  assert.deepEqual(r.pii.masked, [{ type: 'EMAIL', count: 3 }, { type: 'PHONE', count: 1 }]);
+  assert.deepEqual(createMasker().entities(), []);
 });
 
 test('language detection', () => {
@@ -102,6 +104,56 @@ test('normalizeTriage fills optional fields so views never crash', () => {
   assert.deepEqual(n.precedents, []);
   assert.equal(n.draft.validation.passed, false);
   assert.ok(n.created_at && n.language.code);
+});
+
+test('retrieval.route: one confident queue, two otherwise, all queues when the match is weak', () => {
+  const pw = analyze({ ticket_id: 'T1', subject: 'Password reset', body: 'I forgot my password, please help' });
+  assert.equal(pw.retrieval.route.queues.length, 3);
+  assert.deepEqual(pw.retrieval.route.searched, ['IT Support']);
+  assert.equal(pw.retrieval.route.fallback_global, false);
+  assert.equal(pw.retrieval.top_similarity, pw.precedents[0].similarity);
+  const vague = analyze({ ticket_id: 'T2', subject: 'Question about something', body: 'Hi there, quick question.' });
+  assert.equal(vague.retrieval.route.fallback_global, true);
+  assert.deepEqual(vague.retrieval.route.searched, []);
+
+  const n = normalizeTriage({ ...pw, retrieval: { route: { queues: [{ queue: 'IT Support', score: 'x' }, null], searched: ['IT Support'], fallback_global: 'yes' } } });
+  assert.deepEqual(n.retrieval.route, { queues: [{ queue: 'IT Support', score: null }], searched: ['IT Support'], fallback_global: false });
+  assert.deepEqual(normalizeTriage({ ...pw, retrieval: undefined }).retrieval.route, { queues: [], searched: [], fallback_global: false });
+});
+
+test('contract v1 fields the console reads: holding mode, empty precedents, warnings, request_id', () => {
+  const base = analyze({ ticket_id: 'T3', subject: 'x', body: 'y' });
+  const holding = normalizeTriage({
+    ...base,
+    precedents: [],
+    retrieval: { route: { queues: [], searched: [], fallback_global: true }, top_similarity: 0, k: 5 },
+    draft: { ...base.draft, mode: 'holding', citations: [] },
+    warnings: [{ stage: 'draft', code: 'STUB', message: 'draft stage is a stub' }, { nope: 1 }],
+  });
+  assert.equal(holding.draft.mode, 'holding');
+  assert.deepEqual(holding.precedents, []);
+  assert.equal(holding.retrieval.top_similarity, 0);
+  assert.deepEqual(holding.warnings, [{ stage: 'draft', code: 'STUB', message: 'draft stage is a stub' }]);
+  assert.match(holding.request_id, /^req_[0-9a-f]{12}$/);
+  assert.equal(normalizeTriage({ ...base, draft: { ...base.draft, mode: 'weird' } }).draft.mode, 'generated');
+  assert.equal(describeError(new ApiError('Engine timed out.', { requestId: 'req_0123456789ab' })), 'Engine timed out. (request req_0123456789ab)');
+});
+
+test('no precedent: empty list and a holding reply that cites nothing', () => {
+  const r = analyze({ ticket_id: 'T4', subject: 'Question about something', body: 'Hi there, quick question.' });
+  assert.deepEqual(r.precedents, []);
+  assert.equal(r.draft.mode, 'holding');
+  assert.deepEqual(r.draft.citations, []);
+  assert.equal(r.retrieval.top_similarity, 0);
+  assert.ok(r.gate.reasons.some((x) => x.code === 'NO_PRECEDENT'));
+  assert.notEqual(r.gate.decision, 'AUTO_DRAFT');
+});
+
+test('ticketTitle falls back to the body when there is no subject', () => {
+  assert.equal(ticketTitle({ subject: 'VPN down', body: 'x' }), 'VPN down');
+  assert.equal(ticketTitle({ subject: '', body: 'Mein  Drucker\n druckt nicht' }), 'Mein Drucker druckt nicht');
+  assert.equal(ticketTitle({ subject: ' ', body: 'a'.repeat(100) }), `${'a'.repeat(80)}…`);
+  assert.equal(ticketTitle({ subject: '', body: '' }), '(no subject)');
 });
 
 test('serverMessage reads gateway and FastAPI error shapes', () => {

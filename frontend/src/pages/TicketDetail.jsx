@@ -8,8 +8,14 @@ import DraftText from '../components/DraftText.jsx';
 import LatencyStrip from '../components/LatencyStrip.jsx';
 import { useTickets } from '../state/tickets.jsx';
 import { DECISIONS, GATE_THRESHOLDS, LANGUAGES, PRIORITIES, REASONS } from '../lib/constants.js';
-import { dateTime, pct, timeAgo } from '../lib/format.js';
+import { dateTime, pct, ticketTitle, timeAgo } from '../lib/format.js';
 import { go, ticketHref } from '../lib/useHashRoute.js';
+
+const DRAFT_MODE = {
+  generated: { label: 'Generated', tone: 'bg-brand-100 text-brand-700' },
+  extractive: { label: 'Extractive fallback', tone: 'bg-amber-100 text-amber-800' },
+  holding: { label: 'Holding reply', tone: 'bg-slate-200 text-ink-2' },
+};
 
 function Section({ title, icon: Icon, right, children, defaultOpen = true }) {
   const [open, setOpen] = useState(defaultOpen);
@@ -96,7 +102,7 @@ export default function TicketDetail({ id }) {
       <div className="flex items-center gap-3 bg-brand-700 px-4 py-2 text-white">
         <a href="#/" className="rounded p-1 hover:bg-white/10" title="Back to dashboard"><ArrowLeft size={16} /></a>
         <h1 className="min-w-0 truncate text-[15px]">
-          Ticket <span className="text-white/60">·</span> {t.ticket_id} <span className="text-white/60">·</span> {t.subject}
+          Ticket <span className="text-white/60">·</span> {t.ticket_id} <span className="text-white/60">·</span> {ticketTitle(t)}
         </h1>
         <div className="ml-auto flex shrink-0 items-center gap-1 text-[12.5px]">
           <button disabled={idx <= 0} onClick={() => go(ticketHref(ordered[idx - 1].ticket_id))} className="rounded p-1 hover:bg-white/10 disabled:opacity-30" aria-label="Previous ticket"><ChevronLeft size={16} /></button>
@@ -130,11 +136,14 @@ export default function TicketDetail({ id }) {
             <KV k="Gate decision"><DecisionBadge decision={t.gate.decision} /></KV>
           </SideCard>
           <SideCard title="Classification">
-            <KV k="Type"><div className="flex items-center justify-between gap-2"><span>{c.type.label}</span><ConfidenceBar value={c.type.confidence} width="w-10" /></div></KV>
+            <KV k="Type"><div className="flex items-center justify-between gap-2"><span>{c.type.label}</span><ConfidenceBar value={c.type.confidence} width="w-10" /></div>
+              <TopProbs probs={c.type.probs} label={c.type.label} /></KV>
             <KV k="Queue"><div className="flex items-center justify-between gap-2"><span className="min-w-0 truncate" title={c.queue.label}>{c.queue.label}</span><ConfidenceBar value={c.queue.confidence} width="w-10" /></div>
-              <div className="text-[11px] text-ink-3">{c.queue.votes}/{c.queue.k} retrieval votes agree</div></KV>
+              <div className="text-[11px] text-ink-3">{c.queue.votes}/{c.queue.k} retrieval votes agree</div>
+              <TopProbs probs={c.queue.probs} label={c.queue.label} /></KV>
             <KV k="Priority"><div className="flex items-center justify-between gap-2"><span>{PRIORITIES[c.priority.label]?.label}</span><ConfidenceBar value={c.priority.confidence} width="w-10" /></div>
-              <div className="text-[11px] text-ink-3">P(high) = {c.priority.p_high.toFixed(2)}</div></KV>
+              <div className="text-[11px] text-ink-3">P(high) = {c.priority.p_high.toFixed(2)}</div>
+              <TopProbs probs={c.priority.probs} label={c.priority.label} format={(k) => PRIORITIES[k]?.label ?? k} /></KV>
           </SideCard>
           <SideCard title="Gateway">
             <div className="flex items-start gap-2 text-[12px] text-ink-2">
@@ -157,8 +166,11 @@ export default function TicketDetail({ id }) {
                 <Pill className="rounded bg-brand-600 text-white">{c.type.label}</Pill>
                 <span className="text-[12.5px] text-ink-2">{c.queue.label}</span>
               </div>
-              <div className="mt-1 text-[12px] text-ink-3">{t.ticket_id}</div>
-              <h2 className="mt-1 text-[17px] font-semibold">{t.subject}</h2>
+              <div className="mt-1 text-[12px] text-ink-3">
+                {t.ticket_id}
+                {t.request_id && <span className="ml-2 font-mono text-[11px]" title="Request ID, for the gateway and engine logs">{t.request_id}</span>}
+              </div>
+              <h2 className="mt-1 text-[17px] font-semibold">{ticketTitle(t)}</h2>
               <div className="mt-1 text-[12px] text-ink-2">
                 <b>Created</b> {dateTime(t.created_at)} <span className="mx-1 text-ink-3">·</span> <b>Triaged</b> {timeAgo(t.processed_at)}
               </div>
@@ -195,9 +207,7 @@ export default function TicketDetail({ id }) {
             right={
               <span className="flex items-center gap-2">
                 <LangBadge code={t.draft.language} />
-                <Pill className={t.draft.mode === 'extractive' ? 'bg-amber-100 text-amber-800' : 'bg-brand-100 text-brand-700'}>
-                  {t.draft.mode === 'extractive' ? 'Extractive fallback' : 'Generated'}
-                </Pill>
+                <Pill className={DRAFT_MODE[t.draft.mode].tone}>{DRAFT_MODE[t.draft.mode].label}</Pill>
               </span>
             }
           >
@@ -223,6 +233,7 @@ export default function TicketDetail({ id }) {
             <div className="mt-2.5 flex flex-wrap items-center gap-3 text-[12px]">
               <Check2 ok={t.draft.validation.citations_ok}>Citations resolve</Check2>
               <Check2 ok={t.draft.validation.numbers_ok}>Numbers grounded</Check2>
+              <Check2 ok={t.draft.validation.language_ok}>Reply language</Check2>
               {t.draft.validation.retries > 0 && <span className="text-ink-3">{t.draft.validation.retries} {t.draft.validation.retries > 1 ? 'retries' : 'retry'}</span>}
               <span className="ml-auto flex items-center gap-1">
                 <span className="mr-1 text-[11.5px] text-ink-3">Was this draft helpful?</span>
@@ -240,6 +251,16 @@ export default function TicketDetail({ id }) {
 
           <section className="rounded border border-line bg-white px-4 py-3">
             <LatencyStrip latency={t.latency_ms} />
+            {t.warnings.length > 0 && (
+              <details className="mt-2.5 text-[12px]">
+                <summary className="cursor-pointer text-amber-800">{t.warnings.length} engine warning{t.warnings.length > 1 ? 's' : ''}</summary>
+                <ul className="mt-1 space-y-1 pl-4">
+                  {t.warnings.map((w, i) => (
+                    <li key={i} className="list-disc text-ink-2"><code className="text-[11px] text-ink-3">{w.stage} · {w.code}</code> {w.message}</li>
+                  ))}
+                </ul>
+              </details>
+            )}
           </section>
         </div>
 
@@ -247,6 +268,12 @@ export default function TicketDetail({ id }) {
         <aside className="space-y-3">
           <SideCard title={<span className="flex items-center gap-1.5"><Sparkles size={14} className="text-brand-600" /> Similar tickets</span>}>
             <p className="-mt-1 mb-2 text-[11px] text-ink-3">Top precedents from the knowledge base (similarity, cosine)</p>
+            <RoutingPath route={t.retrieval.route} found={t.precedents.length} />
+            {t.precedents.length === 0 && (
+              <p className="rounded border border-dashed border-line px-3 py-4 text-center text-[12px] text-ink-3">
+                No similar ticket in the knowledge base. The draft is a holding reply that promises nothing.
+              </p>
+            )}
             <ul className="divide-y divide-line">
               {t.precedents.map((p) => (
                 <li key={p.ticket_id} className="py-2 first:pt-0">
@@ -258,6 +285,11 @@ export default function TicketDetail({ id }) {
                     <LangBadge code={p.language} />
                     <span className="text-[11px] text-ink-3">{PRIORITIES[p.priority]?.label}</span>
                   </div>
+                  {p.answer_snippet && (
+                    <p className="mt-1 line-clamp-3 border-l-2 border-line pl-2 text-[11.5px] leading-snug text-ink-2" title={p.answer_snippet}>
+                      {p.answer_snippet}
+                    </p>
+                  )}
                 </li>
               ))}
             </ul>
@@ -287,6 +319,59 @@ function ToolButton({ icon: Icon, children, ...rest }) {
     <button {...rest} className="flex items-center gap-1.5 rounded border border-line bg-white px-2.5 py-1 text-[12px] hover:bg-slate-50 disabled:opacity-40">
       <Icon size={13} /> {children}
     </button>
+  );
+}
+
+// FS-09: level 1 scores the queues, level 2 searches tickets inside the chosen ones; weak matches fall
+// back to a search across all queues.
+function RoutingPath({ route, found }) {
+  if (!route.queues.length && !route.fallback_global) return null;
+  return (
+    <div className="mb-2.5 rounded border border-line bg-slate-50 px-2.5 py-2 text-[11.5px]">
+      <div className="mb-1 font-medium text-ink-2">Routing path</div>
+      <div className="flex flex-wrap items-center gap-1">
+        <span className="text-ink-3">Knowledge base</span>
+        <ChevronRight size={12} className="text-ink-3" aria-hidden />
+        {route.queues.map((q) => {
+          const searched = route.searched.includes(q.queue);
+          return (
+            <span
+              key={q.queue}
+              title={searched ? 'Searched for precedents' : 'Scored, not searched'}
+              className={`rounded px-1.5 py-0.5 ${searched ? 'bg-brand-100 text-brand-800' : 'bg-slate-200 text-ink-3'}`}
+            >
+              {q.queue}{q.score != null && <span className="ml-1 text-ink-3">{q.score.toFixed(2)}</span>}
+            </span>
+          );
+        })}
+      </div>
+      {route.fallback_global ? (
+        <p className="mt-1 text-amber-800">
+          {found ? 'The routed queues matched weakly, so precedents came from all queues.' : 'The routed queues matched weakly, and a search across all queues found nothing similar either.'}
+        </p>
+      ) : (
+        <p className="mt-1 text-ink-3">Precedents were searched inside the highlighted {route.searched.length > 1 ? 'queues' : 'queue'}.</p>
+      )}
+    </div>
+  );
+}
+
+// Top three classes of one classifier head, as thin bars (the label's own bar is highlighted).
+function TopProbs({ probs, label, format = (k) => k }) {
+  const top = Object.entries(probs).sort((a, b) => b[1] - a[1]).slice(0, 3);
+  if (top.length < 2) return null;
+  return (
+    <ul className="mt-1 space-y-0.5" aria-label="Top classes">
+      {top.map(([k, p]) => (
+        <li key={k} className="flex items-center gap-1.5 text-[10.5px] text-ink-3">
+          <span className="w-24 truncate" title={format(k)}>{format(k)}</span>
+          <span className="h-1 flex-1 rounded bg-slate-100">
+            <span className={`block h-1 rounded ${k === label ? 'bg-brand-600' : 'bg-slate-300'}`} style={{ width: `${Math.round(p * 100)}%` }} />
+          </span>
+          <span className="tabular w-7 text-right">{Math.round(p * 100)}%</span>
+        </li>
+      ))}
+    </ul>
   );
 }
 

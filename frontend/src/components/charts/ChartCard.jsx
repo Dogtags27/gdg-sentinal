@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { BarChart3, Table2 } from 'lucide-react';
 
-// FS-13 — shared chart frame. Every chart gets a table-view twin (values are never tooltip-only).
+// FS-18 — shared chart frame. Every chart gets a table-view twin (values are never tooltip-only).
 // `table` is [{label, value}] plus a formatter, so feature code only passes data.
 export default function ChartCard({ title, subtitle, table, format = (v) => v, children, className = '' }) {
   const [asTable, setAsTable] = useState(false);

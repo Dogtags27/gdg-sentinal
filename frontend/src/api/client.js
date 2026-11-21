@@ -1,4 +1,4 @@
-// FS-04 — the only module that talks to the network.
+// FS-06 — the only module that talks to the network.
 // Every call has a timeout and throws ApiError with a message an operator can read.
 import { mockApi } from './mockEngine.js';
 import { ApiError, normalizeTriage, serverMessage } from './normalize.js';
@@ -6,14 +6,14 @@ import { ApiError, normalizeTriage, serverMessage } from './normalize.js';
 export { ApiError };
 
 const BASE = (import.meta.env.VITE_API_BASE || '').replace(/\/$/, '');
-// Production builds always go through the gateway; its MOCK_ENGINE switch (H-06) covers demo mode there.
+// Production builds always go through the gateway; its MOCK_ENGINE switch (FS-03) covers demo mode there.
 const MOCK_FLAG = import.meta.env.VITE_USE_MOCK;
 export const USE_MOCK = import.meta.env.DEV ? MOCK_FLAG !== 'false' : MOCK_FLAG === 'true';
 
 const STATUS_TEXT = {
-  400: 'The gateway rejected the ticket. Check the subject and body.',
+  400: 'The gateway could not read the ticket. Check the subject and body.',
   413: 'The ticket is too large for the gateway.',
-  422: 'The ticket failed validation.',
+  422: 'The ticket failed validation. The body is required.',
   429: 'Too many requests. Wait a moment and try again.',
   500: 'The gateway hit an internal error. Try again, or check the gateway logs.',
   502: 'The gateway could not reach the triage engine.',
@@ -47,10 +47,11 @@ async function request(path, { method = 'GET', body, timeout = 10_000 } = {}) {
       throw new ApiError(serverMessage(data) || STATUS_TEXT[res.status] || `Request failed (${res.status}).`, {
         status: res.status,
         code: data?.error?.code || `HTTP_${res.status}`,
+        requestId: data?.error?.request_id ?? res.headers.get('X-Request-ID'),
       });
     }
     if (data === null) {
-      throw new ApiError('The gateway sent a response that is not JSON.', { status: res.status, code: 'BAD_RESPONSE' });
+      throw new ApiError('The gateway sent a response that is not JSON.', { status: res.status, code: 'BAD_RESPONSE', requestId: res.headers.get('X-Request-ID') });
     }
     return data;
   } catch (err) {
@@ -72,16 +73,16 @@ async function wrapMock(fn) {
   }
 }
 
-// Endpoint paths are PROVISIONAL until contracts/ v1 (H-02).
+// Paths and shapes: contracts/README.md (v1).
 export const api = {
-  health: () => (USE_MOCK ? wrapMock(() => mockApi.health()) : request('/api/health', { timeout: 3_000 })),
+  health: () => (USE_MOCK ? wrapMock(() => mockApi.health()) : request('/api/v1/health', { timeout: 3_000 })),
 
-  /** @param {{subject: string, body: string}} ticket */
+  /** @param {{subject?: string, body: string, ticket_id?: string}} ticket */
   triage: async (ticket, opts = {}) =>
     normalizeTriage(
       USE_MOCK
         ? await wrapMock(() => mockApi.triage(ticket, opts))
-        : await request('/api/triage', { method: 'POST', body: ticket, timeout: 20_000 }),
+        : await request('/api/v1/triage', { method: 'POST', body: ticket, timeout: 20_000 }),
       ticket,
     ),
 };

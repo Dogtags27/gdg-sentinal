@@ -1,4 +1,4 @@
-// FS-03 sample menu — the demo script scenarios first, then edge cases.
+// FS-05 sample menu — the demo script scenarios first, then edge cases.
 export const SAMPLES = [
   {
     id: 'de-vpn',
@@ -44,7 +44,7 @@ export const SAMPLES = [
   },
 ];
 
-// Used by "Simulate outage" (FS-10): a burst of near-identical tickets in a short window.
+// Used by "Simulate outage" (FS-13): a burst of near-identical tickets in a short window.
 export const OUTAGE_BURST = [
   { subject: 'VPN down at Berlin site', body: 'Since 10 minutes nobody at our Berlin office can connect to the VPN. All remote apps are unreachable.' },
   { subject: 'VPN nicht erreichbar', body: 'Seit kurzem ist der VPN-Zugang nicht erreichbar. Wir können nicht arbeiten.' },

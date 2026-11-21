@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useMemo, useReducer } from 'react';
 import { api, USE_MOCK } from '../api/client.js';
+import { describeError } from '../api/normalize.js';
 import { buildSeedTickets } from '../data/mockTickets.js';
 import { OUTAGE_BURST } from '../data/samples.js';
 import { STATUS_FROM_DECISION, WORKFLOW } from '../lib/constants.js';
@@ -115,7 +116,7 @@ export function TicketsProvider({ children }) {
         toast(`${results.length} tickets triaged; the engine reported no burst cluster`, 'info');
       }
     } catch (e) {
-      toast(e.message, 'critical');
+      toast(describeError(e), 'critical');
     } finally {
       dispatch({ type: 'BUSY', key: 'outage', value: false });
     }
