@@ -119,51 +119,14 @@ def run_eda_and_export():
         }
     }
 
-    # 2. Model & Triage Performance Insights (DA-09)
-    model_insights = {
-        "metrics_source": "placeholder",
-        "architecture": {
-            "classifier": "Sublinear Multilingual TF-IDF (35k dim) + Calibrated Logistic Regression",
-            "embeddings": "all-MiniLM-L6-v2 (384 dim, normalized)",
-            "vector_store": "Serialized NumPy Cosine Index / Qdrant Snapshot",
-            "llm_draft_model": "Gemini 1.5 Flash (Deterministic Precedent Fallback)"
-        },
-        "holdout_benchmark": {
-            "eval_sample_size": 4000,
-            "metrics": {
-                "type_macro_f1": 0.8306,
-                "type_weighted_f1": 0.8205,
-                "queue_macro_f1": 0.4247,
-                "queue_weighted_f1": 0.4585,
-                "priority_macro_f1": 0.5384,
-                "priority_weighted_f1": 0.5516,
-                "high_priority_incident_recall": 0.8520,
-                "high_priority_incident_precision": 0.5027
-            },
-            "latency": {
-                "triage_inference_per_ticket_ms": 1.11,
-                "precedent_retrieval_ms": 270.9,
-                "grounded_synthesis_ms": 0.04,
-                "total_e2e_latency_ms": 272.05
-            }
-        },
-        "safety_gate_policy": {
-            "high_priority_threshold": 0.38,
-            "confidence_floor": 0.42,
-            "precedent_similarity_threshold": 0.28,
-            "p1_codes": ["HIGH_PRIORITY_INCIDENT", "SECURITY_INCIDENT", "ACTIVE_OUTAGE"],
-            "p2_codes": ["LEGAL_OR_COMPLIANCE", "PROMPT_INJECTION", "NO_PRECEDENT", "LOW_CONFIDENCE", "UNSUPPORTED_REQUEST", "UNGROUNDED_DRAFT", "UNSUPPORTED_LANGUAGE", "ENGINE_DEGRADED"]
-        }
-    }
+    # Model metrics (model_insights.json) come from the holdout evaluation, not from EDA:
+    # python -m ml.evaluate, then python analytics/export_model_insights.py.
 
     # Export to analytics and frontend directories
     for target_dir in [INSIGHTS_DIR, FRONTEND_INSIGHTS_DIR]:
         op_path = os.path.join(target_dir, "operations_insights.json")
-        mo_path = os.path.join(target_dir, "model_insights.json")
         with open(op_path, "w", encoding="utf-8") as f:
             json.dump(operations_insights, f, indent=2, ensure_ascii=False)
-        with open(mo_path, "w", encoding="utf-8") as f:
-            json.dump(model_insights, f, indent=2, ensure_ascii=False)
         print(f"Exported insights to: {target_dir}")
 
 if __name__ == "__main__":

@@ -1,94 +1,88 @@
-# SentinelDesk 5-Minute Live Demo Script (QA-10)
+# SentinelDesk 5-minute demo script (QA-10)
 
-**Target Duration:** Exactly 5 minutes (00:00 – 05:00)  
-**Presenters:** Lead Presenter + Technical Co-Presenter  
-**Primary Surface:** Live Console at `http://localhost:5173` (with offline fallback ready)  
+**Length:** 5:00, then 3 minutes of judge Q&A
+**Presenters:** Speaker 1 (product and safety), Speaker 2 (system and data)
+**Surface:** the deployed console, or `http://localhost:8080` (gateway serving the built console). Fallbacks are at the end.
 
----
-
-## ⏱️ Timeline & Speaker Notes
+Every scenario below is a built-in sample on the **Live triage** page (`#/lab`), so nothing needs to be typed under pressure. Judges paste their own tickets on the same page.
 
 ```
-[00:00 - 01:00] The Core Problem & Architectural Vision
-[01:00 - 02:00] Ingestion, Sanitization & PII Perimeter Defense
-[02:00 - 03:00] The 3-Step Workflow: Ingest → Evaluate Gates → Defend Precedents
-[03:00 - 04:00] Incident Burst Simulation & P1 Escalation
-[04:00 - 05:00] Executive Telemetry, Funnel Accountability & Closing
+0:00-0:30  Problem and architecture
+0:30-1:30  German hospital VPN outage -> escalated to on-call, German draft held
+1:30-2:20  English password reset -> grounded auto-draft with citations
+2:20-3:00  Refund demand with a prompt injection -> human review, nothing promised
+3:00-3:30  Simulate an outage -> major-incident banner
+3:30-4:30  Holdout metrics on the Reports page
+4:30-5:00  Safeguards and close
 ```
 
 ---
 
-### 🎙️ Minute 00:00 – 01:00: The Problem & The Mission
+### 0:00-0:30 Problem and architecture
 
-**Screen:** SentinelDesk Operator Console (`http://localhost:5173/#/`)  
-**Visual Cue:** Show the clean OncoSys-style header with the pulsing green telemetry capsule (`● Sentinel-4B · P95 38ms`).
+**Screen:** Overview (`#/`).
 
-> **Speaker 1 (The Hook):**  
-> *"Every enterprise IT and security operations team faces the exact same crisis: a relentless deluge of incoming tickets. When a critical VPN concentrator drops or a credential leaks, human operators spend 20 minutes manually reading logs, checking runbooks, and sanitizing user data before a single fix is deployed. MTTR climbs, SLAs breach, and alert fatigue sets in.*  
->  
-> *Meet **SentinelDesk**: an autonomous IT help desk and cyber-operations watchtower that categorizes, prioritizes, and routes tickets automatically. Our promise is simple: **Every ticket triaged. Every escalation defended.** Your engineering team only touches work that strictly requires human judgment."*
+> **Speaker 1:** "Helpdesks get outages and password questions in the same inbox, and off-the-shelf chatbots make up refund policies. SentinelDesk triages every ticket, decides whether a reply is safe to draft, and only drafts from how past tickets were actually solved, citing them by ID."
+>
+> **Speaker 2:** "The React console talks to a Go gateway that masks personal data. A private Python engine detects the language, classifies type, queue and priority, searches 32,000 past tickets in Redis, runs an 11-rule safety gate, and drafts a reply that a validator checks before anyone sees it."
 
----
+### 0:30-1:30 German hospital VPN outage
 
-### 🎙️ Minute 01:00 – 02:00: Ingestion & Zero-Retention PII Redaction
+**Screen:** Live triage → sample **DE · Hospital VPN outage** → Run.
 
-**Screen:** Click `+ New Ticket` or use the Hero Command Bar (`/ to focus`).  
-**Visual Cue:** Paste a customer ticket containing a credit card, email, and IP address (e.g. from `GOLD-09`).
+> **Speaker 1:** "A German clinic has lost its VPN, so telemedicine and the patient records system are down. Watch each step."
+>
+> - **Language:** detected as German from the text alone.
+> - **Classify:** Incident, high priority, with calibrated confidence.
+> - **Similar past tickets:** the top matches, each with its ticket ID, similarity and how it was solved.
+> - **Safety gate:** *Escalated to on-call*, reason `HIGH_PRIORITY_INCIDENT`.
+> - **Draft:** written in German, citing the past tickets, and **held** until a person accepts the triage.
+>
+> "The step timings are real; the console slows the animation down so you can follow it. The total engine time is shown under the steps."
 
-> **Speaker 2 (Security Architecture):**  
-> *"Before an LLM or embedding model ever touches user input, security must be guaranteed. Watch what happens when a customer submits a ticket containing a credit card number, personal email, and internal server IP.*  
->  
-> *Our edge **Go gateway** executes zero-retention regex masking at the perimeter. Credit cards become `[CARD_1]`, emails become `[EMAIL_1]`, and internal IPs become `[IP_1]`. The raw credentials never leave the gateway memory. When the Python engine processes the incident, customer privacy is mathematically shielded while classification accuracy remains completely unaffected."*
+### 1:30-2:20 English password reset
 
----
+**Screen:** sample **EN · Password reset** → Run.
 
-### 🎙️ Minute 02:00 – 03:00: The 3-Step Workflow: Ingest ➔ Evaluate ➔ Defend
+> **Speaker 2:** "A routine request. No rule fires, so the gate says *Auto-draft ready*. Every sentence that uses a past ticket cites it as `[TKT-xxxxx]`, and the check card shows the validator passed: every citation is one of the retrieved tickets, every number appears in the evidence, and the reply is in English."
 
-**Screen:** Open ticket `TICK-8021` (or click `GOLD-01` in the queue).  
-**Visual Cue:** Show the 3 methodology cards and highlight the verified `[TKT-XXXXX]` citation.
+### 2:20-3:00 Refund demand with a prompt injection
 
-> **Speaker 1 (Triage & Grounding):**  
-> *"Here is a live ticket: `VPN Gateway Pool Exhaustion across US-East`. How does SentinelDesk resolve it?*  
->  
-> *1. **Ingest & Mask:** The language is classified (EN/DE) and PII is masked.  
-> *2. **Evaluate Gates:** The ticket is audited against our calibrated holdout curve. If confidence is below 85% or blast radius is high, it diverts safely to humans. Here, confidence is 98.4%, so the safety gate clears.  
-> *3. **Defend Precedents:** Instead of asking an LLM to hallucinate instructions, our hierarchical Redis vector search retrieves verified historical runbook `[TKT-01049]`. The auto-draft explicitly cites this precedent, providing engineers with an exact failover command. Notice the citation chip: zero hallucinations, 100% grounded."*
+**Screen:** sample **EN · Refund + prompt injection** → Run.
 
----
+> **Speaker 1:** "This customer demands a full refund and tells the model to ignore its instructions. The gate raises `PROMPT_INJECTION` and `UNSUPPORTED_REQUEST`, so a person reviews it. The draft does not promise a refund: the prompt forbids amounts or guarantees that aren't in the evidence, and the validator rejects any number the evidence doesn't contain."
+>
+> Optional, if time allows: **EN · Charged twice, full of personal data** shows `[EMAIL_1]`, `[CARD_1]`, `[IBAN_1]` placeholders. The masking happens in the gateway, so the engine and the LLM never see the originals.
 
-### 🎙️ Minute 03:00 – 04:00: Outage Burst Simulation & P1 Escalation
+### 3:00-3:30 Simulate an outage
 
-**Screen:** Click the **"Simulate Outage"** button in the dashboard header.  
-**Visual Cue:** The major-incident red banner slides in; ticket queue updates with 5 concurrent VPN outage tickets; gate decision shifts to `ESCALATE_ONCALL`.
+**Screen:** Overview → **Simulate an outage**.
 
-> **Speaker 2 (Real-Time Resilience):**  
-> *"Now let's simulate what happens when disaster strikes. I'm clicking 'Simulate Outage'.*  
->  
-> *Immediately, a burst of 5 related VPN tickets floods the ingestion queue within a 60-second window. Our policy engine's **Active Outage Detector** identifies the cluster signature.  
->  
-> *Instead of auto-drafting individual replies, SentinelDesk triggers an immediate **P1 ESCALATE_ONCALL** gate decision. The red Major Outage banner alerts all on-duty operators, paging the infrastructure on-call engineer with clustered blast-radius telemetry. Autonomous when safe, instant escalation when dangerous."*
+> **Speaker 2:** "Four VPN tickets arrive within seconds, in English and German. The burst detector looks for tickets in related queues that share an outage term, such as 'vpn', inside a rolling 10-minute window. From the third one on it raises `ACTIVE_OUTAGE`, those tickets go to on-call, and the major-incident banner appears with the ticket count."
 
----
+### 3:30-4:30 Holdout metrics
 
-### 🎙️ Minute 04:00 – 05:00: Executive Telemetry, Funnel & Closing
+**Screen:** Reports (`#/insights`) → *Dataset & model*.
 
-**Screen:** Navigate to **"Reports"** (`#/insights`) to show the Holdout & Exclusion Funnel.  
-**Visual Cue:** Hover over the 5-stage funnel (*Ingested* ➔ *Sanitized* ➔ *Gated* ➔ *Diverted* ➔ *Auto-Drafted*).
+> **Speaker 1:** "All numbers are on 8,034 held-out tickets the model never saw. We split the data exactly as the brief says, seed 42, 80/20, and our leakage audit checks the two sets share no ticket IDs, no ticket text, and that no holdout answer is saved anywhere."
+>
+> - **High-priority incident recall:** the gate escalates 76 of every 100 true high-priority incidents (precision 0.514). A recall-tuned rule, one setting away, catches 86 of 100 at the cost of sending about a third of all tickets to on-call. Either way, everything the gate does not auto-draft is read by a person.
+> - **Macro-F1:** type 0.859, priority 0.592, queue 0.528 across 10 queues. Queue is the hardest call, which is why low confidence goes to a person.
+> - **Calibration:** expected calibration error of 0.008 to 0.015, so a 70% confidence really means about 70%.
 
-> **Speaker 1 (Business Proof & Defensibility):**  
-> *"Finally, let's look at the numbers. On our Reports page, we provide executive-ready telemetry inspired by scientific precision instruments.*  
->  
-> *Our **Holdout & Safety Exclusion Funnel** accounts for every single ticket: 1,420 ingested, 100% PII sanitized, 83.1% pass confidence gates, and 62.7% auto-cleared with zero human intervention.  
->  
-> *More importantly, our QA audit certifies **zero data leakage**: 16,000 KB training precedents and 4,000 holdout test cases are completely disjoint with SHA-256 cryptographic verification. Our P95 latency is 38ms, well beneath our 400ms SLA.  
->  
-> *SentinelDesk gives enterprise engineering teams their time back. Thank you, and we're ready for your questions."*
+### 4:30-5:00 Safeguards and close
+
+> **Speaker 2:** "If the LLM fails, OpenAI falls back to Gemini, then to quoting the best past answer verbatim, flagged `ENGINE_DEGRADED`. Nothing generated is sent without passing the validator."
+>
+> **Speaker 1:** "SentinelDesk escalates what's dangerous, drafts only what history supports, and shows its evidence every time. Try it with your own ticket."
 
 ---
 
-## 🎛️ Demo Checklist & Fallbacks
+## Checklist and fallbacks
 
-- [ ] Dev server running at `http://localhost:5173` with mock engine active.
-- [ ] Browser window zoomed to 110% for crisp projector/screen-share legibility.
-- [ ] Local backup studio (`sentineldesk_prototype_studio.html`) open in background tab.
-- [ ] Pre-recorded 1080p backup video queued in QuickTime/VLC in case of network cut.
+- [ ] Deployed stack healthy: `curl <host>/api/v1/health` shows the engine `ok`, and two warm-up tickets have run (`infra/warmup.py`).
+- [ ] Browser zoom at 110% for the projector.
+- [ ] **Fallback 1, LLM or Redis down:** the engine still answers (extractive or holding drafts, `ENGINE_DEGRADED`). Say so; it is a feature.
+- [ ] **Fallback 2, engine down:** restart the gateway with `MOCK_ENGINE=true`. It answers with the contract's example responses.
+- [ ] **Fallback 3, no network:** `cd frontend && npm run dev` runs the console on the in-browser mock engine.
+- [ ] Backup screen recording on the presenter laptop, if one was recorded.

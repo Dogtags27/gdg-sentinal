@@ -1,7 +1,7 @@
 # ML engineer + indexing: progress and what is still blocked
 
 Status as of 2026-11-21. Owner: ML engineer (ML-01..18 in the current README; formerly ML-01..14 + DA-03/04/05).
-Nothing here is committed yet. Everything lives in `ml/` and `engine/app/{analyze,retrieval}/`.
+Everything lives in `ml/` and `engine/app/{analyze,retrieval}/`, and is merged to main. The blockers below were cleared later (the live index uses OpenAI embeddings); final holdout numbers are in [`README.md`](README.md#results-ml-18).
 
 ## Why some steps are not done
 | Blocker | What it stops |

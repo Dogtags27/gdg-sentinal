@@ -125,9 +125,11 @@ def check_csv_alignment(ops: dict[str, Any]) -> list[str]:
         errors.append("source_file missing — re-export with eda_pipeline.py")
         return errors
 
-    csv_path = Path(LOCAL_DATA_DIR) / source
-    if not csv_path.is_file():
-        errors.append(f"CSV not found for source_file: {csv_path}")
+    # ../data (EDA convention) first, then where `python -m ml.split` downloads the dataset.
+    candidates = [Path(LOCAL_DATA_DIR) / source, Path(__file__).resolve().parents[1] / "ml" / "artifacts" / "raw" / source]
+    csv_path = next((c for c in candidates if c.is_file()), None)
+    if csv_path is None:
+        errors.append("CSV not found for source_file in: " + ", ".join(str(c) for c in candidates))
         return errors
 
     exp = expected_from_csv(csv_path)

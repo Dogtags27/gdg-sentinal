@@ -6,10 +6,27 @@
 
 ---
 
-## ✅ 1. The 10-Point Pre-Freeze Regression Checklist
+## 1. Pre-freeze checklist
 
-| # | Inspection Point | Expected Result | Verified Command / Evidence | Status |
+Status is what was verified on 2026-11-21 on a laptop, without the cloud keys. Rows marked **Run on the stack** need the deployed engine (Redis + LLM) and must be ticked by whoever runs them.
+
+| # | Check | Expected | Command | Status |
 | :-: | :--- | :--- | :--- | :-: |
+| **1** | Frontend tests | 15/15 pass | `cd frontend && npm test` | ✅ 15/15 |
+| **2** | Frontend build | No errors | `cd frontend && npm run build` | ✅ |
+| **3** | Python tests (engine + ML) | All pass, 1 skipped without Redis | `python -m pytest` | ✅ |
+| **4** | Go gateway tests | All pass | `cd backend && go test ./...` | ✅ |
+| **5** | Leakage audit on the real split | 7/7 checks pass | `python -m ml.split && python qa/audit_leakage.py` | ✅ 7/7 |
+| **6** | Holdout metrics reproduce | type 0.859, priority 0.592, queue 0.528 macro-F1 | `python -m ml.train && python -m ml.evaluate` | ✅ |
+| **7** | Golden set against the real pipeline | 30/30 expected gate decisions | `python qa/run_golden_set.py --endpoint <host>/api/v1/triage` | Run on the stack |
+| **8** | Cloud access | OpenAI, R2, Redis say OK | `python infra/check_access.py` | Run on the stack |
+| **9** | No secrets in git | `.env` and `ml/artifacts/` ignored | `git check-ignore -v .env ml/artifacts/` | ✅ |
+| **10** | Simulate outage | Banner appears, `ACTIVE_OUTAGE` fires | Overview → "Simulate an outage" | Run on the stack |
+| **11** | Keyboard | `/` focuses search, Esc closes dialogs, ← → step through precedents | In the console | ✅ |
+
+Without `--endpoint`, `run_golden_set.py` only checks the golden set against its own keyword lists, and `score_drafts.py` scores the sample drafts written into the script. Neither exercises the real engine, so neither replaces row 7.
+
+--- | :--- | :--- | :-: |
 | **1** | **Frontend Unit Tests** | 15/15 Node tests passing | `cd frontend && npm test` | ✅ PASS |
 | **2** | **Frontend Build** | Zero Vite build errors/warnings | `cd frontend && npm run build` (284ms) | ✅ PASS |
 | **3** | **Golden Set Runner** | 30/30 tickets pass expected gates | `python3 qa/run_golden_set.py` (100%) | ✅ PASS |
@@ -27,16 +44,17 @@
 
 In live hackathons and high-stakes judge presentations, network drops, rate-limit bans, or port collisions can occur. SentinelDesk maintains a **3-tier defense-in-depth redundancy**:
 
-### Tier 1: Local Mock Engine (Zero-Cloud Mode)
-- **Mechanism:** In `frontend/src/api/mockEngine.js`, the console has a complete in-browser mock engine that replicates the exact Go gateway and Python engine contract.
-- **Activation:** Set `VITE_USE_MOCK=true` (default during local demo).
-- **Benefit:** If Wi-Fi cuts out completely, the entire demo runs 100% locally with zero latency spikes.
+### Tier 1: Engine degraded, stack still up
+- **When:** OpenAI and Gemini fail, or time out (`LLM_TIMEOUT_S`, 10 s).
+- **What happens:** the engine quotes the best precedent verbatim (extractive) or writes a holding reply and raises `ENGINE_DEGRADED`. Triage, retrieval and the gate keep working. Nothing to switch.
 
-### Tier 2: Standalone Zero-Dependency HTML Studio
-- **File:** `5-AProject-SSC/00_SentinelDesk/sentineldesk_prototype_studio.html`
-- **Activation:** Can be opened directly in Chrome/Safari from disk (`file:///...`) without running Node or Vite.
-- **Benefit:** If Node.js crashes or ports 5173/8080 are killed by OS updates, the HTML studio provides the identical OncoSys visual workflow, keyboard hotkeys, and scenario launcher.
+### Tier 2: Gateway mock mode (engine or Redis down)
+- **Activation:** restart the gateway with `MOCK_ENGINE=true` (`backend/internal/engine/mock.go`).
+- **What happens:** the gateway answers with the contract's example responses, picked by keyword, with real IDs, timings and PII masking. The deployed console keeps working.
 
-### Tier 3: Pre-Recorded 1080p Fallback Video
-- **File:** `docs/assets/sentineldesk-backup-demo-1080p.mp4`
-- **Specification:** Clean 5-minute screencast recording showing every action in `docs/demo-script.md` without audio, allowing the presenter to narrate live over the video if hardware fails.
+### Tier 3: In-browser mock engine (no network)
+- **Activation:** `cd frontend && npm run dev` (the mock is the default in dev), or build with `VITE_USE_MOCK=true`.
+- **What happens:** `frontend/src/api/mockEngine.js` runs the whole contract in the browser, including the sample scenarios and the outage simulation.
+
+### Tier 4: Screen recording
+- Record one run of `docs/demo-script.md` on the presenter laptop before the demo. It is not stored in the repo.

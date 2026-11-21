@@ -9,7 +9,7 @@ When high-volume customer and IT support tickets arrive:
 2. **Classifies & Routes**: Predicts priority, queue, and category using hybrid ML.
 3. **Retrieves Precedents**: Uses **Hierarchical RAG** over Redis RediSearch HNSW to find verified historical solutions.
 4. **Enforces Deterministic Gates**: Applies hardcoded policy rules (security vulnerabilities, prompt injection, GDPR, mass outage bursts) that LLMs cannot bypass.
-5. **Generates Grounded Drafts**: Synthesizes Gemini Flash draft replies with strict ticket ID citations (`[TKT-xxxxx]`), routing P1 emergencies to on-call teams and low-risk tickets to automated dispatch.
+5. **Generates Grounded Drafts**: Drafts replies with an LLM (OpenAI `gpt-5.4-mini`, Gemini as fallback) with strict ticket ID citations (`[TKT-xxxxx]`), routing P1 emergencies to on-call teams and low-risk tickets to automated dispatch.
 
 ---
 
@@ -28,7 +28,7 @@ flowchart TD
     subgraph Core["⚡ Intelligence Engine (FastAPI)"]
         ENG["Python FastAPI Orchestrator"]
         LANG["Language Detector (EN / DE)"]
-        EMB["Query Embedder\n(gemini-embedding-2, 768 dims)"]
+        EMB["Query Embedder\n(OpenAI text-embedding-3-small, 768 dims)"]
         CLS["Hybrid Classifier\n(TF-IDF + KNN Neighbor Votes)"]
         VAL["Post-Gen Citation Validator"]
     end
@@ -44,7 +44,7 @@ flowchart TD
     end
 
     subgraph Models["🤖 Foundation Models"]
-        GEMINI["Gemini Flash (Generative Drafts)"]
+        GEMINI["OpenAI gpt-5.4-mini, Gemini fallback (Drafts)"]
     end
 
     UI -->|REST / JSON| GW
@@ -90,8 +90,8 @@ flowchart TD
   * **Citation Auditing**: Post-generation verification pass ensuring every `[TKT-xxxxx]` cited by the LLM was present in the retrieved context.
 
 ### D. Vector Database (Hierarchical RAG)
-* **Stack**: Redis Stack with RediSearch (`redis/redis-stack` Docker container), FAISS (offline backup).
-* **Embeddings**: Google `gemini-embedding-2` (768 dimensions).
+* **Stack**: Redis Stack with RediSearch (`redis/redis-stack` Docker container).
+* **Embeddings**: OpenAI `text-embedding-3-small` at 768 dimensions (Google `gemini-embedding-2` when there is no OpenAI key). One provider per index.
 * **Role**: Stores ~49,400 ticket chunks with HNSW vector graphs and metadata TAG fields (`queue`, `language`, `priority`, `type`).
 * **Why Redis?**:
   1. **Sub-15ms Latency**: Entire HNSW graph resides in-memory on EC2.
@@ -122,7 +122,7 @@ flowchart TD
   * `analytics/insights/model_insights.json` & `frontend/src/features/insights/data/model_insights.json`
 
 ### G. Foundation Models (Generation)
-* **Model**: Google Gemini Flash via Google GenAI SDK.
+* **Model**: OpenAI `gpt-5.4-mini` first, then Google `gemini-3.1-flash-lite`, then an extractive fallback that quotes the best precedent.
 * **Role**: Generates accurate, empathetic draft resolutions grounded in retrieved precedent answers.
 * **System Contract**:
   * Draft must cite precedent tickets (`[TKT-xxxxx]`).
@@ -135,11 +135,11 @@ flowchart TD
 | Step | Component | Action | Output / SLA |
 | :--- | :--- | :--- | :--- |
 | **1. Ingest** | Go Gateway | Ingests ticket JSON; strips PII (emails, cards, SSNs) | Clean payload (< 10ms) |
-| **2. Embed** | Python Engine | Converts text into 768-d float32 vector via `gemini-embedding-2` | Dense vector (< 100ms) |
+| **2. Embed** | Python Engine | Converts text into 768-d float32 vector via the configured embedding model | Dense vector |
 | **3. Classify** | ML Engine | Blends TF-IDF with vector neighbor votes for queue probabilities | Top-2 Queue Routes |
 | **4. Retrieve** | Redis RediSearch | Level-1 centroid check ➔ Level-2 HNSW KNN search (`k=5`) | 5 Precedent Chunks (< 15ms) |
 | **5. Gate** | Policy Engine | Evaluates regex rules + 15-min rolling window outage bursts | Gate Code (`P0` / `P1` / `P2`) |
-| **6. Draft** | Gemini Flash | Synthesizes customer query with precedent answers | Grounded Draft (< 1,200ms) |
+| **6. Draft** | LLM (OpenAI, then Gemini) | Writes the reply from the precedent answers only | Grounded draft |
 | **7. Verify** | Engine Validator | Scans draft for valid `[TKT-xxxxx]` citations against context | Hallucination Check Passed |
 | **8. Present** | React Console | Renders ticket, policy badge, and actionable draft for operator | Total Latency < 1,500ms |
 

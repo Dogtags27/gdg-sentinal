@@ -1,36 +1,29 @@
-# SentinelDesk Certified Data Leakage Audit (QA-09)
+# Data leakage audit (QA-09)
 
-**Date of Audit:** 2026-11-21 18:36:58 UTC  
-**Auditor:** SentinelDesk QA & Verification Workstream  
-**Dataset Source:** `Tobi-Bueck/customer-support-tickets`  
-**Verdict:** 🟢 **CERTIFIED LEAKAGE-FREE (ZERO CONTAMINATION)**  
+**Run:** 2026-11-21 19:10 UTC, by `python qa/audit_leakage.py`
+**Dataset:** `Tobi-Bueck/customer-support-tickets` at revision `ddf1c81a5475`, files: `aa_dataset-tickets-multi-lang-5-2-50-version.csv`, `dataset-tickets-multi-lang-4-20k.csv`, `dataset-tickets-german_normalized_50_5_2.csv`
+**Rows after de-duplicating on normalised body:** 40,167
+**Result:** all checks pass
 
----
+## Checks
 
-## 🔬 Audit Summary & Verification Invariants
+| Check | Detail | Result |
+|---|---|---|
+| KB and holdout ticket IDs are disjoint | 0 shared IDs | Pass |
+| Every row lands in exactly one split | 32,133 KB + 8,034 holdout = 40,167 rows | Pass |
+| 80/20 split with random_state=42 | 80.0% / 20.0%, seed 42 | Pass |
+| Inference inputs hold only ticket_id, subject, body | columns: ticket_id, subject, body | Pass |
+| No holdout `answer` is saved anywhere | none | Pass |
+| No holdout body appears verbatim in the KB | 0 duplicated bodies | Pass |
+| Files match the checksums recorded at split time | all match | Pass |
 
-| Audit Invariant | Specification | Result | Verification Status |
-| :--- | :--- | :---: | :---: |
-| **Ticket ID Mutual Exclusivity** | `set(KB) ∩ set(Holdout) == ∅` | **0 overlap** | ✅ **VERIFIED PASSED** |
-| **Split Fraction Ratio** | 80.0% Knowledge Base / 20.0% Holdout | **80.0% / 20.0%** | ✅ **VERIFIED PASSED** |
-| **Ground Truth Answer Shielding** | `answer` column stripped from inference input | **0 answers in blind test** | ✅ **VERIFIED PASSED** |
-| **Determinism Seed** | Shuffled and partitioned with fixed PRNG | **random_state = 42** | ✅ **VERIFIED PASSED** |
+## Split files
 
----
+| File | Rows | Use | SHA-256 |
+|---|---:|---|---|
+| `kb_train.csv` | 32,133 | 80% knowledge base: training, calibration (last 10% = kb_val) and RAG index | `208042e032240c4b34e51332a322506a01bd9d0dd32672a7984046eebd31dea7` |
+| `test_inputs.csv` | 8,034 | 20% holdout, inference inputs only | `5a72975e9cea3bbe1a336062abcc0d1300392a89fa6f185c957148abcc9b8938` |
+| `test_labels.csv` | 8,034 | 20% holdout labels, read only by `ml/evaluate.py` for scoring | `ff726822022a29e89fd4d13cffdff482170830bb611a9283df496bed5372ca1b` |
 
-## 📦 Partition Inventory & Checksums
-
-| Partition File | Record Count | Description | SHA-256 Checksum |
-| :--- | :---: | :--- | :--- |
-| **`kb_train.csv`** | **16,000** | 80% KB precedent vectors and labeled runbooks | `28f8714f81b5ba5fb0868ed5fe362eff7e66d0725cacb4788f803085a934d18e` |
-| **`test_holdout.csv`** | **4,000** | 20% unseen benchmark evaluation targets | `c4835fc88910743b629a4670ff87096d263c4dd8e8dd269ab5b93faf2f699deb` |
-| **`test_blind.csv`** | **4,000** | Production inference inputs (`answer` stripped) | `101c6d2db0f1fe39df59289eaf99bce875488e2ed1e12be55e87440e41937b22` |
-
----
-
-## ✍️ Formal Sign-Off
-
-The SentinelDesk QA workstream certifies that **zero test answers or holdout labels** were ingested into the vector search embeddings, TF-IDF feature vocabulary, or prompt context pools. All evaluation metrics reflect authentic generalization on unseen customer support requests.
-
-**Certified by:** QA Workstream · Lead Verification Officer  
-**Timestamp:** `2026-11-21T18:36:58.249362+00:00`  
+The split follows the brief exactly: `df.sample(frac=1.0, random_state=42)`, IDs `TKT-{i:05d}`, first 80% is the KB.
+The German topic file (no answers) is split the same way and only its 80% is indexed, never as a citable precedent.
