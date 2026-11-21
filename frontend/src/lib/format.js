@@ -29,3 +29,10 @@ export const overallConfidence = (t) =>
 
 export const initials = (name = '') =>
   name.split(/\s+/).filter(Boolean).slice(0, 2).map((p) => p[0].toUpperCase()).join('');
+
+// Subject is optional in contract v1; fall back to the start of the body.
+export function ticketTitle(t) {
+  if (t.subject?.trim()) return t.subject;
+  const body = (t.body ?? '').replace(/\s+/g, ' ').trim();
+  return body ? (body.length > 80 ? `${body.slice(0, 80)}…` : body) : '(no subject)';
+}

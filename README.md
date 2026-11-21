@@ -121,9 +121,9 @@ FT.SEARCH idx:chunks "*=>[KNN 10 @vector_embedding $q AS dist]" PARAMS 2 q <quer
 Rules:
 - Commit only inside your own folders.
 - `git pull --rebase` every 30 minutes; push small commits.
-- Contract changes go through Hriday.
+- Contract changes go through Hriday. The API contract (v1, frozen) is in [`contracts/`](contracts/README.md).
 - Never commit `.env`, data or model files. They live in R2.
-- Run Python from the repo root with `PYTHONPATH=engine` so `ml/` can import the shared Gemini client.
+- Run Python from the repo root and import engine code from there, for example `from engine.app.common.gemini import embed_texts`. Tests: `python -m pytest`.
 
 ## Timeline
 
@@ -285,25 +285,7 @@ sentineldesk-artifacts/
 
 ## Env vars
 
-```
-GEMINI_API_KEY=
-EMBED_MODEL=gemini-embedding-2
-EMBED_DIM=768
-GEN_MODEL=
-REDIS_URL=redis://:<password>@redis:6379
-REDIS_CHUNK_INDEX=idx:chunks
-REDIS_CHUNK_PREFIX=chunk:
-REDIS_QUEUE_PREFIX=queue:
-UPDATE_QUERIED_COUNT=true
-POLICY_PATH=config/policy.yaml
-R2_ENDPOINT=
-R2_ACCESS_KEY_ID=
-R2_SECRET_ACCESS_KEY=
-R2_BUCKET=sentineldesk-artifacts
-ENGINE_URL=http://engine:8000
-MOCK_ENGINE=true
-PORT=8080
-```
+The full list, with comments, is in [`infra/env.template`](infra/env.template). Copy it to `.env` in the repo root. `python infra/check_access.py` then checks Gemini, R2 and Redis without printing any secret. Local Redis setup is in [`infra/README.md`](infra/README.md).
 
 ## Top risks
 

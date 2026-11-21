@@ -2,7 +2,7 @@ import { Siren } from 'lucide-react';
 import { clustersOf, useTickets } from '../state/tickets.jsx';
 import { go } from '../lib/useHashRoute.js';
 
-// FS-10 — shown while any open ticket belongs to an active burst cluster.
+// FS-13 — shown while any open ticket belongs to an active burst cluster.
 export default function OutageBanner() {
   const { outage, dispatch } = useTickets();
   if (outage.length === 0) return null;

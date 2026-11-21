@@ -11,7 +11,8 @@ const NAV = [
   { page: 'insights', href: '#/insights', label: 'Reports' },
 ];
 
-// FS-02 — polls the gateway health endpoint.
+// FS-04 — polls GET /api/v1/health. The gateway always answers 200 with status ok | degraded | down
+// (down = the engine is unreachable); a failed request means the gateway itself is down.
 function useHealth() {
   const [h, setH] = useState({ state: 'checking' });
   useEffect(() => {
@@ -19,7 +20,8 @@ function useHealth() {
     const check = async () => {
       try {
         const res = await api.health();
-        if (alive) setH({ state: res?.status === 'ok' ? 'ok' : 'degraded', detail: res });
+        const state = { ok: 'ok', degraded: 'degraded', down: 'engineDown' }[res?.status] ?? 'degraded';
+        if (alive) setH({ state, detail: res });
       } catch (e) {
         if (alive) setH({ state: 'down', error: e.message });
       }

@@ -11,7 +11,7 @@ import { ConfidenceBar, DecisionBadge, LangBadge, PriorityBadge, ReasonChip } fr
 import { useTickets } from '../state/tickets.jsx';
 import { USE_MOCK } from '../api/client.js';
 import { PRIORITIES } from '../lib/constants.js';
-import { ms, overallConfidence, shortDate } from '../lib/format.js';
+import { ms, overallConfidence, shortDate, ticketTitle } from '../lib/format.js';
 import { ticketHref } from '../lib/useHashRoute.js';
 
 const TABS = [
@@ -26,7 +26,7 @@ const TABS = [
 const DECISION_RANK = { ESCALATE_ONCALL: 3, HUMAN_REVIEW: 2, AUTO_DRAFT: 1 };
 const COLUMNS = [
   { key: 'id', label: 'Ticket', get: (t) => t.ticket_id },
-  { key: 'subject', label: 'Subject', get: (t) => t.subject.toLowerCase() },
+  { key: 'subject', label: 'Subject', get: (t) => ticketTitle(t).toLowerCase() },
   { key: 'lang', label: 'Lang', get: (t) => t.language.code },
   { key: 'type', label: 'Type', get: (t) => t.classification.type.label },
   { key: 'priority', label: 'Priority', get: (t) => PRIORITIES[t.classification.priority.label]?.rank ?? 0 },
