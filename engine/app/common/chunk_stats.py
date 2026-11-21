@@ -65,25 +65,22 @@ def _text(v: Any) -> str:
 
 def top_queried(limit: int = 20, settings: Settings | None = None, client: Any = None) -> list[dict[str, Any]]:
     """The most-returned chunks, for the Insights charts."""
+    from redis.commands.search.query import Query
+
     s = settings or get_settings()
     client = client or get_redis(s)
     if client is None:
         return []
     limit = max(1, min(limit, 100))
-    raw = client.execute_command(
-        "FT.SEARCH", s.redis_chunk_index, "*", "SORTBY", "queried_count", "DESC", "LIMIT", 0, limit,
-        "RETURN", 4, "ticket_id", "queue", "subject", "queried_count", "DIALECT", 2,
-    )
+    query = Query("@queried_count:[1 +inf]").sort_by("queried_count", asc=False).paging(0, limit).dialect(2)
     rows = []
-    for i in range(1, len(raw), 2):  # [total, key1, [f, v, ...], key2, [...]]
-        fields = raw[i + 1]
-        row = {_text(fields[j]): _text(fields[j + 1]) for j in range(0, len(fields), 2)}
+    for doc in client.ft(s.redis_chunk_index).search(query).docs:
         rows.append(
             {
-                "ticket_id": row.get("ticket_id", ""),
-                "queue": row.get("queue", ""),
-                "subject": row.get("subject", ""),
-                "count": int(float(row.get("queried_count", 0) or 0)),
+                "ticket_id": _text(getattr(doc, "ticket_id", "")),
+                "queue": _text(getattr(doc, "queue", "")),
+                "subject": _text(getattr(doc, "subject", "")),
+                "count": int(float(_text(getattr(doc, "queried_count", 0)) or 0)),
             }
         )
     return rows

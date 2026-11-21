@@ -29,6 +29,8 @@ class FakeModels:
         self.calls += 1
         if self.calls <= self.fail_first:
             raise APIError(self.fail_code)
+        # Live finding: gemini-embedding-2 returns ONE vector for a list of plain strings.
+        assert all(hasattr(c, "parts") for c in contents), "each text must be its own Content"
         self.embed_batches.append(len(contents))
         return SimpleNamespace(embeddings=[SimpleNamespace(values=[3.0, 4.0] + [0.0] * (self.dim - 2)) for _ in contents])
 
@@ -99,7 +101,7 @@ def test_unconfigured_client_is_unavailable_not_a_crash():
     c = GeminiClient()
     with pytest.raises(GeminiUnavailable, match="GEMINI_API_KEY"):
         c.embed_texts(["a"])
-    with pytest.raises(GeminiUnavailable, match="GEN_MODEL"):
+    with pytest.raises(GeminiUnavailable, match="GEMINI_API_KEY"):
         c.generate_json("p", dict)
 
 
@@ -221,12 +223,38 @@ def test_bump_is_skipped_when_disabled_or_unconfigured_and_never_raises(monkeypa
     assert chunk_stats.bump_queried_count(["TKT-00001"], client=FakeRedis(fail=True)) == 0
 
 
-def test_top_queried_parses_the_search_reply():
-    raw = [2, b"chunk:TKT-00007", [b"ticket_id", b"TKT-00007", b"queue", b"IT Support", b"subject", b"VPN down", b"queried_count", b"12"],
-           b"chunk:TKT-00003", [b"ticket_id", b"TKT-00003", b"queue", b"Billing", b"subject", b"", b"queried_count", b"4"]]
-    r = FakeRedis(raw=raw)
-    rows = chunk_stats.top_queried(10, client=r)
-    assert rows == [{"ticket_id": "TKT-00007", "queue": "IT Support", "subject": "VPN down", "count": 12},
-                    {"ticket_id": "TKT-00003", "queue": "Billing", "subject": "", "count": 4}]
-    assert r.commands[0][:6] == ("FT.SEARCH", "idx:chunks", "*", "SORTBY", "queried_count", "DESC")
+def test_top_queried_reads_documents_from_the_search_api():
+    docs = [SimpleNamespace(ticket_id=b"TKT-00007", queue=b"IT Support", subject=b"VPN down", queried_count=b"12"),
+            SimpleNamespace(ticket_id="TKT-00003", queue="Billing", subject="", queried_count="4")]
+    seen = []
+
+    class Ft:
+        def search(self, query):
+            seen.append(query.query_string())
+            return SimpleNamespace(docs=docs)
+
+    r = SimpleNamespace(ft=lambda index: Ft())
+    assert chunk_stats.top_queried(10, client=r) == [
+        {"ticket_id": "TKT-00007", "queue": "IT Support", "subject": "VPN down", "count": 12},
+        {"ticket_id": "TKT-00003", "queue": "Billing", "subject": "", "count": 4},
+    ]
+    assert seen == ["@queried_count:[1 +inf]"]
     assert chunk_stats.top_queried(10) == []  # not configured
+
+
+def test_generation_deadline_is_never_under_the_api_minimum(monkeypatch):
+    from types import SimpleNamespace
+
+    from engine.app.generate.prompt import DraftOut
+
+    seen = []
+
+    class Models(FakeModels):
+        def generate_content(self, model, contents, config):
+            seen.append(config.http_options.timeout)
+            return super().generate_content(model, contents, config)
+
+    c = client(monkeypatch, Models(text='{"reply": "x"}'), LLM_TIMEOUT_S="8")
+    c.generate_json("p", DraftOut)
+    c.generate_json("p", DraftOut, timeout_s=3)
+    assert seen == [10000, 10000]

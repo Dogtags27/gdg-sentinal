@@ -41,9 +41,15 @@ def extractive_reply(lang: str, ticket_id: str, answer: str) -> dict[str, Any]:
 
 
 def fallback_draft(lang: str, precedents: list[dict[str, Any]], evidence: dict[str, str]) -> dict[str, Any]:
-    """Extractive reply from the best precedent, or the holding reply when there is none."""
-    if not precedents:
-        return holding_reply(lang)
-    best = precedents[0]
-    answer = evidence.get(best["ticket_id"]) or best.get("answer_snippet", "")
-    return extractive_reply(lang, best["ticket_id"], answer) if answer.strip() else holding_reply(lang)
+    """Extractive reply from the best precedent written in the reply language, else the holding reply.
+
+    Quoting an answer in another language would put English into a German reply (or the reverse),
+    which the validator would reject, so those precedents are skipped.
+    """
+    for p in precedents:
+        if p.get("language") != lang:
+            continue
+        answer = evidence.get(p["ticket_id"]) or p.get("answer_snippet", "")
+        if answer.strip():
+            return extractive_reply(lang, p["ticket_id"], answer)
+    return holding_reply(lang)

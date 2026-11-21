@@ -11,7 +11,8 @@ from __future__ import annotations
 
 import logging
 
-from engine.app.common.gemini import GeminiError, generate_json
+from engine.app.common.errors import LLMError as GeminiError  # any provider's failure
+from engine.app.common.providers import generate_json
 from engine.app.generate.fallbacks import fallback_draft
 from engine.app.generate.prompt import DraftOut, build_prompt
 from engine.app.generate.validator import Check, citations_in, validate_reply

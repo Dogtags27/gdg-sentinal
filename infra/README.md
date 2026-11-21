@@ -6,7 +6,8 @@ Owner: Hriday. Only Hriday deploys.
 
 These need a human with the accounts. Do them once, before kickoff:
 
-1. **Gemini key.** Create an API key in Google AI Studio on a project with billing enabled. Free-tier embedding limits are far too low for ~62k tickets in a few hours. Put it in `GEMINI_API_KEY`. Copy the current Gemini Flash model id into `GEN_MODEL`.
+1. **OpenAI key (preferred).** Put it in `OPENAI_API_KEY`. Defaults: `OPENAI_GEN_MODEL=gpt-5.4-mini`, `OPENAI_EMBED_MODEL=text-embedding-3-small` (768 dimensions).
+   **Gemini key (fallback, optional).** Create it in Google AI Studio on a project with billing enabled (the free tier allows only 30,000 embedding tokens a minute). Put it in `GEMINI_API_KEY`; `GEN_MODEL` defaults to `gemini-3.1-flash-lite`. Generation tries OpenAI first and falls back to Gemini. Embeddings use one provider only: switching means re-embedding the KB.
 2. **R2 bucket.** In Cloudflare, create the bucket `sentineldesk-artifacts` and one API token with Object Read and Write on that bucket only. Put the S3 endpoint, key id and secret in the `R2_*` variables.
 3. **Share the keys.** Copy `infra/env.template` to `.env` in the repo root, fill it in, and send it to the team privately (never in git, never in the repo chat history).
 4. **Check access.** Each Python dev runs this from the repo root:
@@ -16,7 +17,7 @@ These need a human with the accounts. Do them once, before kickoff:
    python infra/check_access.py
    ```
 
-   It prints OK, SKIP or FAIL for Gemini, R2 and Redis, and never prints a secret.
+   It prints OK, SKIP or FAIL for OpenAI, Gemini, R2 and Redis, and never prints a secret.
 
 ## Local Redis (H-04)
 

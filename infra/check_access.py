@@ -39,7 +39,23 @@ def need(*names: str) -> None:
         raise Skip(f"set {', '.join(missing)} in .env")
 
 
+def check_openai() -> str:
+    need("OPENAI_API_KEY")
+    try:
+        import openai
+    except ImportError as exc:
+        raise Skip("pip install openai") from exc
+    dim = int(os.environ.get("EMBED_DIM", "768"))
+    client = openai.OpenAI(api_key=os.environ["OPENAI_API_KEY"], timeout=20)
+    model = os.environ.get("OPENAI_EMBED_MODEL") or "text-embedding-3-small"
+    got = len(client.embeddings.create(model=model, input=["ping"], dimensions=dim).data[0].embedding)
+    if got != dim:
+        raise RuntimeError(f"expected a {dim}-dim vector, got {got}")
+    return f"{model} returned a {got}-dim vector (preferred provider)"
+
+
 def check_gemini() -> str:
+    os.environ.setdefault("EMBED_MODEL", "gemini-embedding-2")
     need("GEMINI_API_KEY", "EMBED_MODEL")
     try:
         from google import genai
@@ -96,7 +112,7 @@ def main() -> int:
     if not load_env(ROOT / ".env"):
         print("No .env in the repo root. Copy infra/env.template to .env and fill it in.\n")
     failed = False
-    for name, check in (("Gemini", check_gemini), ("R2", check_r2), ("Redis", check_redis)):
+    for name, check in (("OpenAI", check_openai), ("Gemini", check_gemini), ("R2", check_r2), ("Redis", check_redis)):
         try:
             print(f"OK    {name:<7}{check()}")
         except Skip as skip:

@@ -104,8 +104,10 @@ def check_invariants(resp: Mapping[str, Any]) -> list[str]:
         add("draft: a holding reply must not cite precedents")
     if draft["mode"] == "holding" and resp["gate"]["decision"] == "AUTO_DRAFT":
         add("gate: a holding reply has nothing to ground it, so it can never be AUTO_DRAFT")
-    if draft["mode"] in ("generated", "extractive") and not draft["citations"]:
-        add(f"draft: a {draft['mode']} reply must cite at least one precedent")
+    if draft["mode"] == "extractive" and not draft["citations"]:
+        add("draft: an extractive reply must cite the precedent it quotes")
+    if draft["mode"] == "generated" and not draft["citations"] and v["passed"]:
+        add("draft: a generated reply that cites nothing cannot pass validation")
     if draft["mode"] == "extractive" and "ENGINE_DEGRADED" not in codes:
         add("draft: an extractive reply means the LLM failed, so ENGINE_DEGRADED must be a reason")
     ungrounded = draft["mode"] == "generated" and not v["passed"]

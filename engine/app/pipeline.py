@@ -189,6 +189,22 @@ STAGES: tuple[Stage, ...] = (
 )
 
 
+def use_live_stages() -> None:
+    """Swap the ML stubs for the live Redis/Gemini stages (called at startup when both are configured)."""
+    from dataclasses import replace
+
+    from engine.app import stages_live as live
+
+    run = {
+        "language": live.language_stage,
+        "global_search": live.global_search_stage,
+        "classify": live.classify_stage,
+        "route_and_search": live.route_and_search_stage,
+    }
+    global STAGES
+    STAGES = tuple(replace(st, run=run[st.name]) if st.name in run else st for st in STAGES)
+
+
 def stage_status() -> dict[str, str]:
     return {st.name: "stub" if getattr(st.run, "is_stub", False) else "real" for st in STAGES}
 

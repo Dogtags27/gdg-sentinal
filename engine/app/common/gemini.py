@@ -20,21 +20,19 @@ import time
 from collections.abc import Callable, Sequence
 from typing import Any, TypeVar
 
+from engine.app.common.errors import LLMError, LLMUnavailable
 from engine.app.settings import Settings, get_settings
 
 log = logging.getLogger("sentineldesk.gemini")
 T = TypeVar("T")
 
 EMBED_BATCH = 100  # the Gemini embed API accepts up to 100 texts per call
+MIN_DEADLINE_S = 10.0  # the API rejects any request deadline under 10 s (verified live)
 RETRYABLE_CODES = {408, 429, 500, 502, 503, 504}
 
 
-class GeminiError(RuntimeError):
-    pass
-
-
-class GeminiUnavailable(GeminiError):
-    pass
+GeminiError = LLMError  # kept for callers that import the old names
+GeminiUnavailable = LLMUnavailable
 
 
 def l2_normalize(vec: Sequence[float]) -> list[float]:
@@ -55,6 +53,8 @@ def _is_retryable(exc: Exception) -> bool:
 
 
 class GeminiClient:
+    name = "gemini"
+
     def __init__(self, settings: Settings | None = None, sdk: Any = None, sleep: Callable[[float], None] = time.sleep):
         self.settings = settings or get_settings()
         self._sdk = sdk
@@ -109,8 +109,11 @@ class GeminiClient:
         out: list[list[float]] = []
         for i in range(0, len(texts), EMBED_BATCH):
             batch = [t if t.strip() else " " for t in texts[i : i + EMBED_BATCH]]
+            # gemini-embedding-2 is multimodal: a plain list of strings is ONE document and returns ONE
+            # vector. Wrapping each text in its own Content gives one vector per text (verified live).
+            contents = [types.Content(parts=[types.Part(text=t)]) for t in batch]
             res = self._call(
-                lambda b=batch: self.sdk.models.embed_content(model=self.settings.embed_model, contents=b, config=cfg),
+                lambda c=contents: self.sdk.models.embed_content(model=self.settings.embed_model, contents=c, config=cfg),
                 attempts=5,
             )
             vectors = [list(e.values) for e in res.embeddings]
@@ -135,7 +138,7 @@ class GeminiClient:
             raise GeminiUnavailable("GEN_MODEL is not set.")
         from google.genai import types
 
-        timeout = timeout_s or self.settings.llm_timeout_s
+        timeout = max(timeout_s or self.settings.llm_timeout_s, MIN_DEADLINE_S)
         deadline = time.monotonic() + timeout
         cfg = types.GenerateContentConfig(
             response_mime_type="application/json",

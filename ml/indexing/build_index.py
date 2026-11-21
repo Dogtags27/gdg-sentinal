@@ -98,6 +98,7 @@ def build(r: redis.Redis, split_dir: Path = C.SPLIT_DIR, emb_dir: Path = C.EMB_D
             "queue": n["queue"], "chunk_count": n["chunk_count"], "type_mix": n["type_mix"],
             "top_tags": n["top_tags"], "queried_count": 0, S.VEC: S.to_bytes(n["vector"])})
     pipe.execute()
+    r.hset("meta:embedding", mapping={"provider": man["backend"], "model": man.get("model", ""), "dim": man["dim"]})
     docs = wait_indexed(r)
     return {"chunks": len(df), "indexed_docs": docs, "precedents": int(df["precedent"].sum()),
             "queues": sorted(n["queue"] for n in nodes), "embed_backend": man["backend"],

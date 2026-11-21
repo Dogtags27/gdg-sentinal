@@ -54,7 +54,7 @@ def run(backend: str | None = None, split_dir: Path = C.SPLIT_DIR, out: Path = C
     np.save(out / "test_768.npy", test_vec)
     (out / "kb_ids.json").write_text(json.dumps(kb_all["ticket_id"].tolist()))
     (out / "test_ids.json").write_text(json.dumps(test["ticket_id"].tolist()))
-    man = {"backend": emb.name, "model": EMBED_MODEL if emb.name == "gemini" else "hash",
+    man = {"backend": emb.name, "model": getattr(emb, "model", "hash"),
            "dim": int(kb_vec.shape[1]), "kb_rows": len(kb_all), "test_rows": len(test),
            "text": "subject + newline + body (subject omitted when empty)", "normalised": True}
     (out / "manifest.json").write_text(json.dumps(man, indent=2))
@@ -63,5 +63,5 @@ def run(backend: str | None = None, split_dir: Path = C.SPLIT_DIR, out: Path = C
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
-    ap.add_argument("--backend", choices=["gemini", "hash"])
+    ap.add_argument("--backend", choices=["auto", "openai", "gemini", "hash"])
     print(json.dumps(run(ap.parse_args().backend), indent=2))

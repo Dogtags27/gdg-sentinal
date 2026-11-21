@@ -265,3 +265,13 @@ def test_healthz_and_readyz(client):
     assert h["stages"]["draft"] == "real" and h["stages"]["validate"] == "real"
     assert h["components"]["llm"] == "down"  # no key in tests
     assert client.get("/readyz").status_code == 200
+
+
+def test_extractive_fallback_only_quotes_a_precedent_in_the_reply_language(fake_llm):
+    from engine.app.generate.fallbacks import fallback_draft
+
+    english_only = [dict(p, language="en") for p in PRECEDENTS]
+    assert fallback_draft("de", english_only, ANSWERS)["mode"] == "holding"
+    mixed = [dict(PRECEDENTS[0], language="en"), dict(PRECEDENTS[1], language="de")]
+    d = fallback_draft("de", mixed, ANSWERS)
+    assert d["mode"] == "extractive" and d["citations"] == ["TKT-03317"]

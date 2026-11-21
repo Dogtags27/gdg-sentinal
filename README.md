@@ -11,8 +11,8 @@ Multilingual (EN/DE) incident triage, escalation gate and precedent-grounded rep
 | Engine | Python FastAPI: language detection, classify, retrieve, gate, draft, validate |
 | Vector DB | **Redis** with the Query Engine (RediSearch), self-hosted in Docker on the AWS EC2 box. HNSW cosine index over chunk hashes (level 2) plus queue-node hashes (level 1). Fallback: FAISS loaded from the embeddings parquet |
 | Retrieval | **Hierarchical RAG**: queue first, then chunks inside it, with a global fallback when routing is unsure |
-| Embeddings | `gemini-embedding-2`, 768 dims, same settings for KB and live queries |
-| Draft model | Current Gemini Flash, set in `GEN_MODEL` |
+| Embeddings | **OpenAI** `text-embedding-3-small` at 768 dims (Gemini `gemini-embedding-2` if there is no OpenAI key). One provider per index, same settings for KB and live queries |
+| Draft model | **OpenAI** `gpt-5.4-mini` first (`OPENAI_GEN_MODEL`), Gemini `gemini-3.1-flash-lite` (`GEN_MODEL`) if OpenAI fails or has no key |
 | Classifier | TF-IDF + logistic regression, blended with retrieval votes, temperature-calibrated |
 | Storage | Cloudflare R2 for raw CSV, splits, embeddings, models, Redis RDB snapshot, reports |
 | Deploy | AWS EC2 + docker-compose. **Hriday only** |
@@ -285,13 +285,13 @@ sentineldesk-artifacts/
 
 ## Env vars
 
-The full list, with comments, is in [`infra/env.template`](infra/env.template). Copy it to `.env` in the repo root. `python infra/check_access.py` then checks Gemini, R2 and Redis without printing any secret. Local Redis setup is in [`infra/README.md`](infra/README.md).
+The full list, with comments, is in [`infra/env.template`](infra/env.template). Copy it to `.env` in the repo root. `python infra/check_access.py` then checks OpenAI, Gemini, R2 and Redis without printing any secret. Local Redis setup is in [`infra/README.md`](infra/README.md).
 
 ## Top risks
 
-- **Embedding quota:** turn on Gemini billing before kickoff; checkpoint embeddings every ~2,000 rows; fall back to `gemini-embedding-001`.
+- **Embedding quota:** use the OpenAI key for the KB embed (the Gemini free tier allows only 30,000 tokens a minute); checkpoint every ~2,000 rows. Embeddings never switch provider per call: changing provider means re-embedding the KB, and the engine refuses an index built with a different model.
 - **Data leakage:** one split script, QA audit (QA-09).
-- **Gemini down on stage:** 8 s timeout, extractive fallback, backup demo video.
+- **LLM down on stage:** OpenAI first, then Gemini, then the extractive fallback (10 s timeout each), then a backup demo video.
 - **Cold start:** load models at boot; warm-up request after every deploy.
 - **Merge conflicts:** folder ownership, pull every 30 minutes.
 - **Redis exposed or out of memory:** no public 6379, `requirepass`, Docker network only; check `INFO memory` after loading the KB; keep the RDB snapshot in R2 so a rebuild takes minutes, not a re-embed.
