@@ -19,7 +19,7 @@ const Chip = ({ active, onClick, children }) => (
   <button
     onClick={onClick}
     aria-pressed={active}
-    className={`rounded-md px-2.5 py-1 text-[12px] font-medium transition ${active ? 'bg-brand-800 text-white' : 'bg-white text-ink-2 ring-1 ring-line hover:bg-slate-50'}`}
+    className={`rounded-md px-2.5 py-1 text-[12px] font-medium transition ${active ? 'bg-brand-800 text-white' : 'bg-card text-ink-2 ring-1 ring-line hover:bg-sand'}`}
   >
     {children}
   </button>
@@ -60,7 +60,7 @@ export default function KanbanBoard({ query, setQuery }) {
 
       <div className="mt-4 flex flex-wrap items-center gap-2">
         {query && (
-          <span className="flex items-center gap-1.5 rounded-md bg-slate-200/70 px-2 py-1 text-[12px] text-ink-2">
+          <span className="flex items-center gap-1.5 rounded-md bg-sand-3/70 px-2 py-1 text-[12px] text-ink-2">
             Matching “{query}”
             <button onClick={() => setQuery('')} className="text-ink-3 hover:text-ink" aria-label="Clear search">×</button>
           </span>
@@ -88,7 +88,7 @@ export default function KanbanBoard({ query, setQuery }) {
               onDragOver={(e) => { e.preventDefault(); setOver(col.id); }}
               onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget)) setOver(null); }}
               onDrop={(e) => drop(col.id, e.dataTransfer.getData('text/plain'))}
-              className={`flex flex-col rounded-lg border border-t-4 border-line ${slim ? 'w-[170px] shrink-0' : 'min-w-[240px] flex-1'} ${COLUMN_ACCENT[col.id]} ${isOver ? 'bg-brand-50 ring-2 ring-brand-600/30' : 'bg-slate-100/70'}`}
+              className={`flex flex-col rounded-lg border border-t-4 border-line ${slim ? 'w-[170px] shrink-0' : 'min-w-[240px] flex-1'} ${COLUMN_ACCENT[col.id]} ${isOver ? 'bg-brand-50 ring-2 ring-brand-600/30' : 'bg-sand-2/70'}`}
               aria-label={col.label}
             >
               <header className="flex items-center justify-between px-3 pt-2.5 pb-2">
@@ -100,7 +100,7 @@ export default function KanbanBoard({ query, setQuery }) {
               </header>
               <div className="thin-scroll flex min-h-[120px] flex-1 flex-col gap-2 overflow-y-auto px-2 pb-2">
                 {inFlight.map((p) => (
-                  <article key={p.key} aria-busy="true" className="rounded border border-dashed border-teal-300 bg-white p-2.5">
+                  <article key={p.key} aria-busy="true" className="rounded border border-dashed border-teal-300 bg-card p-2.5">
                     <div className="flex items-center gap-1.5 text-[11.5px] text-teal-700">
                       <Loader2 size={13} className="animate-spin" /> Triaging…
                     </div>
@@ -141,7 +141,7 @@ function Card({ t, dragging, onDragStart, onDragEnd, onMove }) {
       draggable
       onDragStart={onDragStart}
       onDragEnd={onDragEnd}
-      className={`cursor-grab rounded-md border border-line bg-white p-2.5 transition hover:border-line-dark active:cursor-grabbing ${dragging ? 'opacity-40' : ''} ${t.burst ? 'ring-1 ring-red-300' : ''}`}
+      className={`cursor-grab rounded-md border border-line bg-card p-2.5 transition hover:border-line-dark active:cursor-grabbing ${dragging ? 'opacity-40' : ''} ${t.burst ? 'ring-1 ring-red-300' : ''}`}
     >
       <div className="flex items-center gap-1.5">
         <a href={ticketHref(t.ticket_id)} className="font-mono text-[12px] font-medium text-brand-600 hover:underline">{t.ticket_id}</a>
@@ -163,7 +163,7 @@ function Card({ t, dragging, onDragStart, onDragEnd, onMove }) {
           value=""
           onChange={(e) => e.target.value && onMove(e.target.value)}
           aria-label={`Move ${t.ticket_id} to another column`}
-          className="h-6 w-[76px] shrink-0 rounded border border-line bg-white px-1 text-[11px] text-ink-2"
+          className="h-6 w-[76px] shrink-0 rounded border border-line bg-card px-1 text-[11px] text-ink-2"
         >
           <option value="" disabled>Move to…</option>
           {WORKFLOW.filter((w) => w.id !== t.status).map((w) => <option key={w.id} value={w.id}>{w.short}</option>)}

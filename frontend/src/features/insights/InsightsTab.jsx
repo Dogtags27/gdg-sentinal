@@ -41,7 +41,7 @@ function formatExportDate(iso) {
 
 function ProvenanceFooter() {
   return (
-    <footer className="rounded border border-line bg-white px-4 py-3 text-[11.5px] text-ink-3">
+    <footer className="rounded border border-line bg-card px-4 py-3 text-[11.5px] text-ink-3">
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
         <span>
           <span className="font-medium text-ink-2">Dataset:</span> {operationsData.dataset_name}
@@ -64,7 +64,7 @@ function ProvenanceFooter() {
 
 function SubTabBar({ active, onChange }) {
   return (
-    <div className="flex flex-wrap gap-1.5 border-b border-line bg-white px-5 py-2" role="tablist" aria-label="Dataset insights">
+    <div className="flex flex-wrap gap-1.5 border-b border-line bg-card px-5 py-2" role="tablist" aria-label="Dataset insights">
       {SUB_TABS.map(({ id, label, icon: Icon }) => (
         <button
           key={id}
@@ -73,7 +73,7 @@ function SubTabBar({ active, onChange }) {
           aria-selected={active === id}
           onClick={() => onChange(id)}
           className={`flex items-center gap-1.5 rounded px-2.5 py-1 text-[12.5px] font-medium ${
-            active === id ? 'bg-brand-100 text-brand-800 ring-1 ring-brand-600/30' : 'bg-slate-100 text-ink hover:bg-slate-200'
+            active === id ? 'bg-brand-100 text-brand-800 ring-1 ring-brand-600/30' : 'bg-sand-2 text-ink hover:bg-sand-3'
           }`}
         >
           <Icon size={14} aria-hidden />

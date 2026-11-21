@@ -15,13 +15,13 @@ import { go, ticketHref } from '../lib/useHashRoute.js';
 const DRAFT_MODE = {
   generated: { label: 'Generated', tone: 'bg-brand-100 text-brand-700' },
   extractive: { label: 'Extractive fallback', tone: 'bg-amber-100 text-amber-800' },
-  holding: { label: 'Holding reply', tone: 'bg-slate-200 text-ink-2' },
+  holding: { label: 'Holding reply', tone: 'bg-sand-3 text-ink-2' },
 };
 
 function Section({ id, title, icon: Icon, right, children, defaultOpen = true }) {
   const [open, setOpen] = useState(defaultOpen);
   return (
-    <section id={id} className="scroll-mt-4 rounded border border-line bg-white">
+    <section id={id} className="scroll-mt-4 rounded border border-line bg-card">
       <header className="flex items-center gap-2 px-4 py-2.5">
         <button onClick={() => setOpen((o) => !o)} className="flex items-center gap-2 text-[14px] font-semibold text-ink" aria-expanded={open}>
           {open ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
@@ -37,7 +37,7 @@ function Section({ id, title, icon: Icon, right, children, defaultOpen = true })
 
 function SideCard({ title, children }) {
   return (
-    <section className="rounded border border-line bg-white px-3.5 py-3">
+    <section className="rounded border border-line bg-card px-3.5 py-3">
       {title && <h3 className="mb-2 text-[13.5px] font-semibold">{title}</h3>}
       {children}
     </section>
@@ -123,21 +123,21 @@ export default function TicketDetail({ id }) {
   return (
     <div className="flex min-h-full flex-col">
       {/* Title bar */}
-      <div className="flex items-center gap-3 border-b border-line bg-white px-4 py-2.5">
+      <div className="flex items-center gap-3 border-b border-line bg-card px-4 py-2.5">
         <a href="#/console" className="flex shrink-0 items-center gap-1 rounded px-1 py-0.5 text-[12.5px] text-ink-3 hover:text-ink" title="Back to Overview"><ArrowLeft size={15} /> <span className="hidden sm:inline">Overview</span></a>
         <h1 className="flex min-w-0 items-baseline gap-2 text-[15px] font-semibold text-ink">
           <span className="shrink-0 font-mono text-[13px] font-medium text-brand-600">{t.ticket_id}</span>
           <span className="truncate">{ticketTitle(t)}</span>
         </h1>
         <div className="ml-auto flex shrink-0 items-center gap-1 text-[12.5px] text-ink-2">
-          <button disabled={idx <= 0} onClick={() => go(ticketHref(ordered[idx - 1].ticket_id))} className="rounded p-1 hover:bg-slate-100 disabled:opacity-30" aria-label="Previous ticket"><ChevronLeft size={16} /></button>
+          <button disabled={idx <= 0} onClick={() => go(ticketHref(ordered[idx - 1].ticket_id))} className="rounded p-1 hover:bg-sand-2 disabled:opacity-30" aria-label="Previous ticket"><ChevronLeft size={16} /></button>
           <span className="tabular">{idx + 1} of {ordered.length}</span>
-          <button disabled={idx >= ordered.length - 1} onClick={() => go(ticketHref(ordered[idx + 1].ticket_id))} className="rounded p-1 hover:bg-slate-100 disabled:opacity-30" aria-label="Next ticket"><ChevronRight size={16} /></button>
+          <button disabled={idx >= ordered.length - 1} onClick={() => go(ticketHref(ordered[idx + 1].ticket_id))} className="rounded p-1 hover:bg-sand-2 disabled:opacity-30" aria-label="Next ticket"><ChevronRight size={16} /></button>
         </div>
       </div>
 
       {/* Toolbar */}
-      <div className="flex flex-wrap items-center gap-1.5 border-b border-line bg-white px-4 py-1.5">
+      <div className="flex flex-wrap items-center gap-1.5 border-b border-line bg-card px-4 py-1.5">
         <ToolButton
           icon={Send}
           onClick={() => act('resolved', `Reply sent for ${t.ticket_id}`, 'good')}
@@ -184,7 +184,7 @@ export default function TicketDetail({ id }) {
 
         {/* Center */}
         <div className="min-w-0 space-y-3">
-          <section className="flex gap-4 rounded border border-line bg-white px-4 py-3.5">
+          <section className="flex gap-4 rounded border border-line bg-card px-4 py-3.5">
             <FileText size={34} strokeWidth={1.4} className="shrink-0 text-brand-600" />
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
@@ -253,7 +253,7 @@ export default function TicketDetail({ id }) {
                 Released: a person accepted the triage. Check the draft before sending.
               </div>
             )}
-            <div className="rounded border border-line bg-slate-50/70 px-4 py-3">
+            <div className="rounded border border-line bg-sand/70 px-4 py-3">
               <DraftText text={t.draft.text} known={t.precedents.map((p) => p.ticket_id)} onCite={openCited} highlight={highlight} />
             </div>
             <div className="mt-2.5 flex flex-wrap items-center gap-3 text-[12px]">
@@ -266,7 +266,7 @@ export default function TicketDetail({ id }) {
                 <FeedbackButton t={t} dispatch={dispatch} value="up" />
                 <FeedbackButton t={t} dispatch={dispatch} value="down" />
               </span>
-              <button onClick={copyDraft} className="flex items-center gap-1 rounded border border-line px-2 py-1 hover:bg-slate-50"><Copy size={13} /> Copy</button>
+              <button onClick={copyDraft} className="flex items-center gap-1 rounded border border-line px-2 py-1 hover:bg-sand"><Copy size={13} /> Copy</button>
             </div>
             {t.draft.validation.issues.length > 0 && (
               <ul className="mt-2 list-disc pl-5 text-[12px] text-red-800">
@@ -275,7 +275,7 @@ export default function TicketDetail({ id }) {
             )}
           </Section>
 
-          <section className="rounded border border-line bg-white px-4 py-3">
+          <section className="rounded border border-line bg-card px-4 py-3">
             <LatencyStrip latency={t.latency_ms} />
             {t.warnings.length > 0 && (
               <details className="mt-2.5 text-[12px]">
@@ -317,7 +317,7 @@ export default function TicketDetail({ id }) {
                           onClick={() => setOpenSimilar(i)}
                           aria-haspopup="dialog"
                           className={`group grid w-full grid-cols-[1fr_auto] items-center gap-x-2 rounded-md border px-2 py-2 text-left transition outline-none focus-visible:ring-2 focus-visible:ring-brand-600/40 ${
-                            on ? 'border-brand-600/40 bg-brand-50' : 'border-transparent hover:border-brand-100 hover:bg-slate-50'
+                            on ? 'border-brand-600/40 bg-brand-50' : 'border-transparent hover:border-brand-100 hover:bg-sand'
                           }`}
                         >
                           <span className="min-w-0">
@@ -378,7 +378,7 @@ export default function TicketDetail({ id }) {
 
 function ToolButton({ icon: Icon, children, ...rest }) {
   return (
-    <button {...rest} className="flex items-center gap-1.5 rounded border border-line bg-white px-2.5 py-1 text-[12px] hover:bg-slate-50 disabled:opacity-40">
+    <button {...rest} className="flex items-center gap-1.5 rounded border border-line bg-card px-2.5 py-1 text-[12px] hover:bg-sand disabled:opacity-40">
       <Icon size={13} /> {children}
     </button>
   );
@@ -389,7 +389,7 @@ function ToolButton({ icon: Icon, children, ...rest }) {
 function RoutingPath({ route, found }) {
   if (!route.queues.length && !route.fallback_global) return null;
   return (
-    <div className="mb-2.5 rounded border border-line bg-slate-50 px-2.5 py-2 text-[11.5px]">
+    <div className="mb-2.5 rounded border border-line bg-sand px-2.5 py-2 text-[11.5px]">
       <div className="mb-1 font-medium text-ink-2">Routing path</div>
       <div className="flex flex-wrap items-center gap-1">
         <span className="text-ink-3">Knowledge base</span>
@@ -400,7 +400,7 @@ function RoutingPath({ route, found }) {
             <span
               key={q.queue}
               title={searched ? 'Searched for precedents' : 'Scored, not searched'}
-              className={`rounded px-1.5 py-0.5 ${searched ? 'bg-brand-100 text-brand-800' : 'bg-slate-200 text-ink-3'}`}
+              className={`rounded px-1.5 py-0.5 ${searched ? 'bg-brand-100 text-brand-800' : 'bg-sand-3 text-ink-3'}`}
             >
               {q.queue}{q.score != null && <span className="ml-1 text-ink-3">{q.score.toFixed(2)}</span>}
             </span>
@@ -427,7 +427,7 @@ function TopProbs({ probs, label, format = (k) => k }) {
       {top.map(([k, p]) => (
         <li key={k} className="flex items-center gap-1.5 text-[10.5px] text-ink-3">
           <span className="w-24 truncate" title={format(k)}>{format(k)}</span>
-          <span className="h-1 flex-1 rounded bg-slate-100">
+          <span className="h-1 flex-1 rounded bg-sand-2">
             <span className={`block h-1 rounded ${k === label ? 'bg-brand-600' : 'bg-slate-300'}`} style={{ width: `${Math.round(p * 100)}%` }} />
           </span>
           <span className="tabular w-7 text-right">{Math.round(p * 100)}%</span>
@@ -445,7 +445,7 @@ function FeedbackButton({ t, dispatch, value }) {
       onClick={() => dispatch({ type: 'FEEDBACK', id: t.ticket_id, value })}
       aria-pressed={on}
       aria-label={value === 'up' ? 'Draft helpful' : 'Draft not helpful'}
-      className={`rounded p-1.5 ${on ? (value === 'up' ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700') : 'text-ink-3 hover:bg-slate-100'}`}
+      className={`rounded p-1.5 ${on ? (value === 'up' ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700') : 'text-ink-3 hover:bg-sand-2'}`}
     ><Icon size={14} /></button>
   );
 }
@@ -512,9 +512,9 @@ function Suggestions({ t, review, toast }) {
           </span>
         ) : (
           <>
-            <button onClick={apply} className="flex items-center gap-1.5 rounded border border-line bg-white px-2.5 py-1 text-[12px] font-medium hover:bg-slate-50"><Check size={13} /> Apply</button>
-            <button onClick={() => setPicked(new Set(fields.map((f) => f.id)))} className="rounded border border-line px-2.5 py-1 text-[12px] hover:bg-slate-50">Select all</button>
-            <button onClick={() => setPicked(new Set())} className="rounded border border-line px-2.5 py-1 text-[12px] hover:bg-slate-50">Deselect all</button>
+            <button onClick={apply} className="flex items-center gap-1.5 rounded border border-line bg-card px-2.5 py-1 text-[12px] font-medium hover:bg-sand"><Check size={13} /> Apply</button>
+            <button onClick={() => setPicked(new Set(fields.map((f) => f.id)))} className="rounded border border-line px-2.5 py-1 text-[12px] hover:bg-sand">Select all</button>
+            <button onClick={() => setPicked(new Set())} className="rounded border border-line px-2.5 py-1 text-[12px] hover:bg-sand">Deselect all</button>
           </>
         )}
       </div>

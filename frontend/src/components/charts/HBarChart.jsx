@@ -14,7 +14,7 @@ function Tip({ active, payload, format }) {
   if (!active || !payload?.length) return null;
   const p = payload[0];
   return (
-    <div className="rounded border border-line bg-white px-2.5 py-1.5 text-[12px] shadow-md">
+    <div className="rounded border border-line bg-card px-2.5 py-1.5 text-[12px] shadow-md">
       <div className="text-ink-2">{p.payload.label}</div>
       <div className="tabular font-semibold">{format(p.value)}</div>
     </div>

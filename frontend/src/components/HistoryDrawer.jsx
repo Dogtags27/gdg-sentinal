@@ -15,12 +15,12 @@ export default function HistoryDrawer({ onClose }) {
         role="dialog"
         aria-modal="true"
         aria-label="History"
-        className="animate-slide-in absolute top-0 right-0 flex h-full w-[340px] flex-col border-l border-line bg-white shadow-2xl"
+        className="animate-slide-in absolute top-0 right-0 flex h-full w-[340px] flex-col border-l border-line bg-card shadow-2xl"
         onMouseDown={(e) => e.stopPropagation()}
       >
         <header className="flex items-center justify-between border-b border-line px-4 py-3">
           <h2 className="flex items-center gap-2 text-[14px] font-semibold"><History size={16} /> History</h2>
-          <button onClick={onClose} className="rounded p-1 text-ink-3 hover:bg-slate-100" aria-label="Close history"><X size={16} /></button>
+          <button onClick={onClose} className="rounded p-1 text-ink-3 hover:bg-sand-2" aria-label="Close history"><X size={16} /></button>
         </header>
         <ol className="thin-scroll flex-1 overflow-y-auto">
           {history.length === 0 && <li className="px-4 py-6 text-center text-[12.5px] text-ink-3">Nothing yet. Triage or open a ticket.</li>}

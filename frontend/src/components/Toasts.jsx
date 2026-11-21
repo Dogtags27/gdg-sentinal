@@ -14,7 +14,7 @@ export default function Toasts() {
       {toasts.map((t) => {
         const [border, Icon, ic] = TONE[t.tone] ?? TONE.info;
         return (
-          <div key={t.id} className={`pointer-events-auto flex items-start gap-2 rounded border-l-4 ${border} bg-white px-3 py-2.5 shadow-lg ring-1 ring-black/5`}>
+          <div key={t.id} className={`pointer-events-auto flex items-start gap-2 rounded border-l-4 ${border} bg-card px-3 py-2.5 shadow-lg ring-1 ring-black/5`}>
             <Icon size={16} className={`mt-px shrink-0 ${ic}`} />
             <span className="flex-1 text-[12.5px]">{t.text}</span>
             <button onClick={() => dispatch({ type: 'DISMISS', id: t.id })} className="text-ink-3 hover:text-ink" aria-label="Dismiss"><X size={14} /></button>

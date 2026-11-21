@@ -11,12 +11,12 @@ export default function Modal({ title, onClose, children, width = 'max-w-xl' }) 
         role="dialog"
         aria-modal="true"
         aria-label={title}
-        className={`w-full ${width} rounded-md bg-white shadow-2xl ring-1 ring-black/5`}
+        className={`w-full ${width} rounded-md bg-card shadow-2xl ring-1 ring-black/5`}
         onMouseDown={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between px-5 pt-4 pb-2">
           <h2 className="text-[15px] font-semibold">{title}</h2>
-          <button onClick={onClose} className="rounded p-1 text-ink-3 hover:bg-slate-100 hover:text-ink" aria-label="Close">
+          <button onClick={onClose} className="rounded p-1 text-ink-3 hover:bg-sand-2 hover:text-ink" aria-label="Close">
             <X size={16} />
           </button>
         </div>

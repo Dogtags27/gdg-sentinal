@@ -3,7 +3,7 @@ import { Info } from 'lucide-react';
 // Stat tile: proportional figures for the value (no tabular-nums on a standalone number).
 export default function KpiCard({ icon: Icon, iconClass = 'text-brand-600 bg-brand-100', label, value, unit, hint }) {
   return (
-    <div className="min-w-[200px] flex-1 rounded border border-line bg-white px-4 py-3">
+    <div className="min-w-[200px] flex-1 rounded border border-line bg-card px-4 py-3">
       <div className="flex items-center gap-2 text-[13px] font-medium text-ink">
         <span className={`grid h-6 w-6 place-items-center rounded ${iconClass}`}>
           <Icon size={14} aria-hidden />

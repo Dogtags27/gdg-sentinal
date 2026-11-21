@@ -66,12 +66,12 @@ export default function NewTicketModal({ onClose }) {
             type="button"
             aria-expanded={menu}
             onClick={() => setMenu((m) => !m)}
-            className="flex items-center gap-1.5 rounded border border-line bg-white px-2.5 py-1.5 text-[12.5px] font-medium hover:bg-slate-50"
+            className="flex items-center gap-1.5 rounded border border-line bg-card px-2.5 py-1.5 text-[12.5px] font-medium hover:bg-sand"
           >
             Load a sample <ChevronDown size={14} />
           </button>
           {menu && (
-            <ul className="absolute z-10 mt-1 w-80 overflow-hidden rounded border border-line bg-white py-1 shadow-lg">
+            <ul className="absolute z-10 mt-1 w-80 overflow-hidden rounded border border-line bg-card py-1 shadow-lg">
               {SAMPLES.map((s) => (
                 <li key={s.id}>
                   <button type="button" onClick={() => pick(s)} className="block w-full px-3 py-1.5 text-left hover:bg-brand-50">
@@ -116,7 +116,7 @@ export default function NewTicketModal({ onClose }) {
         )}
 
         <div className="flex justify-end gap-2 pt-1">
-          <button type="button" onClick={onClose} disabled={busy} className="rounded border border-line px-3 py-1.5 text-[12.5px] hover:bg-slate-50 disabled:opacity-50">
+          <button type="button" onClick={onClose} disabled={busy} className="rounded border border-line px-3 py-1.5 text-[12.5px] hover:bg-sand disabled:opacity-50">
             Cancel
           </button>
           <button type="submit" disabled={busy} className="flex items-center gap-1.5 rounded bg-brand-700 px-3 py-1.5 text-[12.5px] font-medium text-white hover:bg-brand-800 disabled:opacity-60">

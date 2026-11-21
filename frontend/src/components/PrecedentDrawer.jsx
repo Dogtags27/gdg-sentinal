@@ -43,20 +43,20 @@ export default function PrecedentDrawer({ ticket, precedents, index, setIndex, o
         aria-modal="true"
         aria-labelledby="precedent-title"
         onMouseDown={(e) => e.stopPropagation()}
-        className="animate-slide-in absolute top-0 right-0 flex h-full w-full max-w-[480px] flex-col border-l border-line bg-white shadow-2xl"
+        className="animate-slide-in absolute top-0 right-0 flex h-full w-full max-w-[480px] flex-col border-l border-line bg-card shadow-2xl"
       >
         <header className="border-b border-line px-5 pt-4 pb-4">
           <div className="flex items-center gap-2 text-[12px] text-ink-3">
             <span className="font-mono font-medium text-brand-600">{p.ticket_id}</span>
             <span>Similar ticket {index + 1} of {precedents.length}</span>
-            <button onClick={onClose} className="ml-auto rounded p-1 text-ink-3 hover:bg-slate-100 hover:text-ink" aria-label="Close similar ticket">
+            <button onClick={onClose} className="ml-auto rounded p-1 text-ink-3 hover:bg-sand-2 hover:text-ink" aria-label="Close similar ticket">
               <X size={17} />
             </button>
           </div>
           <h2 id="precedent-title" className="mt-2 text-[17px] leading-snug font-semibold text-ink">{p.subject}</h2>
           <div className="mt-2.5 flex flex-wrap gap-1.5">
             {tags.map((tag) => (
-              <span key={tag} className="rounded bg-slate-100 px-2 py-0.5 text-[11.5px] text-ink-2">{tag}</span>
+              <span key={tag} className="rounded bg-sand-2 px-2 py-0.5 text-[11.5px] text-ink-2">{tag}</span>
             ))}
           </div>
         </header>
@@ -105,15 +105,15 @@ export default function PrecedentDrawer({ ticket, precedents, index, setIndex, o
             onClick={() => onHighlight(p.ticket_id)}
             disabled={!cited}
             title={cited ? 'Show where the reply draft cites this ticket' : 'The reply draft does not cite this ticket'}
-            className="flex items-center gap-1.5 rounded-md border border-line-dark px-3 py-1.5 text-[12.5px] font-medium text-ink hover:bg-slate-50 disabled:opacity-40"
+            className="flex items-center gap-1.5 rounded-md border border-line-dark px-3 py-1.5 text-[12.5px] font-medium text-ink hover:bg-sand disabled:opacity-40"
           >
             <Highlighter size={13} /> Show in draft
           </button>
           <span className="ml-auto flex items-center gap-1">
-            <button disabled={index === 0} onClick={() => setIndex(index - 1)} className="grid h-8 w-8 place-items-center rounded-md hover:bg-slate-100 disabled:opacity-30" aria-label="Previous similar ticket">
+            <button disabled={index === 0} onClick={() => setIndex(index - 1)} className="grid h-8 w-8 place-items-center rounded-md hover:bg-sand-2 disabled:opacity-30" aria-label="Previous similar ticket">
               <ChevronLeft size={16} />
             </button>
-            <button disabled={index === precedents.length - 1} onClick={() => setIndex(index + 1)} className="grid h-8 w-8 place-items-center rounded-md hover:bg-slate-100 disabled:opacity-30" aria-label="Next similar ticket">
+            <button disabled={index === precedents.length - 1} onClick={() => setIndex(index + 1)} className="grid h-8 w-8 place-items-center rounded-md hover:bg-sand-2 disabled:opacity-30" aria-label="Next similar ticket">
               <ChevronRight size={16} />
             </button>
           </span>
