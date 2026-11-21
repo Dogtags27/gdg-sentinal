@@ -1,4 +1,5 @@
 {
+  "metrics_source": "placeholder",
   "architecture": {
     "classifier": "Sublinear Multilingual TF-IDF (35k dim) + Calibrated Logistic Regression",
     "embeddings": "all-MiniLM-L6-v2 (384 dim, normalized)",

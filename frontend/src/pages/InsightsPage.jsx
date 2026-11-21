@@ -6,12 +6,12 @@ import { useTickets } from '../state/tickets.jsx';
 import { LANGUAGES, PIPELINE_STAGES, REASONS } from '../lib/constants.js';
 import { ms } from '../lib/format.js';
 import InsightsTab from '../features/insights/InsightsTab.jsx';
+import PageHeader from '../components/PageHeader.jsx';
 
-// FS-13 shell: live session charts here; the Data analyst's dataset and holdout view
-// (features/insights/, DA-09/DA-10) is mounted unchanged under "Dataset & model".
+// FS-13 — parity with sentineldeskhq.com "Reports" + live ops telemetry.
 const VIEWS = [
   { id: 'session', label: 'Live session' },
-  { id: 'dataset', label: 'Dataset & model' },
+  { id: 'dataset', label: 'Dataset & benchmarks' },
 ];
 
 const countBy = (xs, key) => {
@@ -38,10 +38,15 @@ function StatusTile({ icon: Icon, tone, label, value, total }) {
 }
 
 export default function InsightsPage() {
-  const [view, setView] = useState('session');
+  const [view, setView] = useState('dataset');
   return (
-    <div>
-      <div className="flex flex-wrap items-center gap-1.5 border-b border-line bg-white px-5 py-2" role="tablist" aria-label="Insights view">
+    <div className="px-5 py-4">
+      <PageHeader
+        eyebrow="Weekly IT & security reports"
+        title="Reports"
+        description="Executive-ready operational volumes and holdout model telemetry — aligned with Sentinel Desk business insights."
+      />
+      <div className="mt-3 flex flex-wrap items-center gap-1.5 rounded-lg border border-line bg-white px-2 py-1.5 shadow-sm" role="tablist" aria-label="Reports view">
         {VIEWS.map((v) => (
           <button
             key={v.id}
