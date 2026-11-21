@@ -25,7 +25,9 @@ func TestTicketRoutesProxyToTheEngine(t *testing.T) {
 
 	cases := []struct{ method, path, body, wantPath string }{
 		{"GET", "/api/v1/tickets?limit=5", "", "/v1/tickets"},
+		{"GET", "/api/v1/tickets/LIVE-ABC123", "", "/v1/tickets/LIVE-ABC123"},
 		{"GET", "/api/v1/tickets/LIVE-ABC123/status", "", "/v1/tickets/LIVE-ABC123/status"},
+		{"GET", "/api/v1/tickets/LIVE-ABC123/related", "", "/v1/tickets/LIVE-ABC123/related"},
 		{"PUT", "/api/v1/tickets/LIVE-ABC123/status", `{"status":"resolved"}`, "/v1/tickets/LIVE-ABC123/status"},
 	}
 	for _, c := range cases {
@@ -47,5 +49,11 @@ func TestTicketRoutesNeedTheLiveEngineAndAValidID(t *testing.T) {
 	}
 	if rec, _ := do(t, s.Handler(), "GET", "/api/v1/tickets", ""); rec.Code != 503 {
 		t.Fatalf("engine down: %d", rec.Code)
+	}
+}
+
+func TestRelatedReadingsGetTheLongerTimeout(t *testing.T) {
+	if proxyTimeout("/api/v1/tickets/LIVE-1/related") <= proxyTimeout("/api/v1/tickets/LIVE-1/status") {
+		t.Fatal("related readings may wait for an LLM translation and need a longer timeout")
 	}
 }

@@ -12,7 +12,7 @@ from engine.app.main import app
 
 class FakeRedis:
     def __init__(self):
-        self.kv, self.z = {}, {}
+        self.kv, self.z, self.h = {}, {}, {}
 
     def set(self, key, value, ex=None, nx=False):
         if nx and key in self.kv:
@@ -22,6 +22,12 @@ class FakeRedis:
 
     def get(self, key):
         return self.kv.get(key)
+
+    def hset(self, key, mapping):
+        self.h.setdefault(key, {}).update({k: v.encode() for k, v in mapping.items()})
+
+    def hmget(self, key, fields):
+        return [self.h.get(key, {}).get(f) for f in fields]
 
     def zadd(self, key, mapping):
         self.z.setdefault(key, {}).update(mapping)
@@ -81,7 +87,7 @@ def test_submitted_tickets_reach_the_manager_list_newest_first(client):
 def test_creator_status_view_reveals_nothing_internal(client):
     t = triage(client, "Ransomware encrypted our file server.")
     view = client.get(f"/v1/tickets/{t['ticket_id']}/status").json()
-    assert set(view) == {"ticket_id", "subject", "created_at", "status"}
+    assert set(view) == {"ticket_id", "subject", "created_at", "status", "updated_at"}
     assert view["status"] == "escalated"
 
 
@@ -103,3 +109,14 @@ def test_store_without_redis_answers_503():
     chunk_stats.set_redis(None)
     c = TestClient(app, raise_server_exceptions=False)
     assert c.get("/v1/tickets").status_code == 503
+
+
+def test_creator_ticket_view_shows_their_words_and_status_only(client):
+    t = triage(client, "Printer offline again since Monday.")
+    view = client.get(f"/v1/tickets/{t['ticket_id']}").json()
+    assert set(view) == {"ticket_id", "subject", "body", "language", "created_at", "status", "updated_at"}
+    assert view["body"] == t["body"] and view["language"] == "en" and view["updated_at"] == view["created_at"]
+    client.put(f"/v1/tickets/{t['ticket_id']}/status", json={"status": "resolved"})
+    after = client.get(f"/v1/tickets/{t['ticket_id']}").json()
+    assert after["status"] == "resolved" and after["updated_at"] >= after["created_at"]
+    assert client.get("/v1/tickets/LIVE-NOPE").status_code == 404

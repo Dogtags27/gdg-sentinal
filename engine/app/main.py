@@ -17,7 +17,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict
 
-from engine.app import pipeline
+from engine.app import pipeline, related
 from engine.app.common import chunk_stats, r2, ticket_store
 from engine.app.schemas import CONTRACT_VERSION, EngineHealth, EngineTriageRequest, EngineTriageResponse, ErrorResponse
 from engine.app.settings import get_settings
@@ -149,6 +149,8 @@ def triage(req: EngineTriageRequest, background: BackgroundTasks) -> EngineTriag
     if resp.precedents:
         background.add_task(chunk_stats.bump_queried_count, [p.ticket_id for p in resp.precedents])
     background.add_task(ticket_store.save, resp.model_dump(mode="json", by_alias=True))
+    if not pipeline.is_demo_ticket(resp.ticket_id):  # drills and lab tests don't need customer readings
+        background.add_task(related.prefetch, resp.ticket_id)
     return resp
 
 
@@ -179,6 +181,29 @@ def ticket_status(ticket_id: str) -> JSONResponse:
     if isinstance(out, JSONResponse):
         return out
     return JSONResponse(content=out) if out else _error(404, "NOT_FOUND", "No ticket with that id (tickets are kept for 7 days).")
+
+
+NOT_FOUND_MSG = "No ticket with that id (tickets are kept for 7 days)."
+
+
+@app.get("/v1/tickets/{ticket_id}")
+def ticket_creator_view(ticket_id: str) -> JSONResponse:
+    """The creator's plain view of their ticket: their words, language, status and dates. No analytics."""
+    out = _store_call(ticket_store.creator_view, ticket_id)
+    if isinstance(out, JSONResponse):
+        return out
+    return JSONResponse(content=out) if out else _error(404, "NOT_FOUND", NOT_FOUND_MSG)
+
+
+@app.get("/v1/tickets/{ticket_id}/related")
+def ticket_related(ticket_id: str) -> JSONResponse:
+    """Similar solved tickets as suggested reading, translated into the creator's language when needed."""
+    out = _store_call(related.related_for, ticket_id)
+    if isinstance(out, JSONResponse):
+        return out
+    if not out:
+        return _error(404, "NOT_FOUND", NOT_FOUND_MSG)
+    return JSONResponse(content={k: v for k, v in out.items() if k != "complete"})
 
 
 @app.put("/v1/tickets/{ticket_id}/status")

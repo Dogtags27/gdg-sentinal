@@ -95,7 +95,7 @@ const mockStore = {
     this.write([{ ...t, status: STATUS_FROM[t.gate?.decision] ?? 'new' }, ...this.read().filter((x) => x.ticket_id !== t.ticket_id)]);
   },
 };
-const statusView = (t) => ({ ticket_id: t.ticket_id, subject: t.subject, created_at: t.created_at, status: t.status });
+const statusView = (t) => ({ ticket_id: t.ticket_id, subject: t.subject, created_at: t.created_at, status: t.status, updated_at: t.updated_at ?? t.created_at });
 const notFound = () => new ApiError('No ticket with that id.', { status: 404, code: 'NOT_FOUND' });
 
 // Paths and shapes: contracts/README.md (v1).
@@ -136,6 +136,36 @@ export const api = {
     return request(`/api/v1/tickets/${encodeURIComponent(id)}/status`, { timeout: 8_000 });
   },
 
+  /** Ticket creators: their own words, language, status and dates. No scores, reasons or drafts. */
+  ticketView: async (id) => {
+    if (USE_MOCK) {
+      const t = mockStore.read().find((x) => x.ticket_id === id);
+      if (!t) throw notFound();
+      return { ...statusView(t), updated_at: t.updated_at ?? t.created_at, body: t.body, language: t.draft?.language ?? 'en' };
+    }
+    return request(`/api/v1/tickets/${encodeURIComponent(id)}`, { timeout: 8_000 });
+  },
+
+  /** Ticket creators: similar solved tickets in their own language (may wait for one LLM translation). */
+  relatedTickets: async (id) => {
+    if (USE_MOCK) {
+      const t = mockStore.read().find((x) => x.ticket_id === id);
+      if (!t) throw notFound();
+      const lang = t.draft?.language ?? 'en';
+      const items = (t.precedents ?? []).slice(0, 3).map((p) => ({
+        ref: p.ticket_id,
+        subject: p.subject,
+        problem: '',
+        answer: p.answer_snippet,
+        language: p.language,
+        original_language: p.language,
+        translated: false,
+      }));
+      return { ticket_id: id, language: lang, items };
+    }
+    return request(`/api/v1/tickets/${encodeURIComponent(id)}/related`, { timeout: 25_000 });
+  },
+
   /** Incident managers: move a ticket through the workflow (new, escalated, review, drafted, resolved). */
   setTicketStatus: async (id, status) => {
     if (USE_MOCK) {
@@ -143,6 +173,7 @@ export const api = {
       const t = items.find((x) => x.ticket_id === id);
       if (!t) throw notFound();
       t.status = status;
+      t.updated_at = new Date().toISOString();
       mockStore.write(items);
       return statusView(t);
     }

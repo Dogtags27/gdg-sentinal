@@ -1,4 +1,4 @@
-import { BarChart3, History, KanbanSquare, ListChecks, Radar } from 'lucide-react';
+import { BarChart3, Funnel, History, KanbanSquare, ListChecks, Radar } from 'lucide-react';
 import { useTickets } from '../state/tickets.jsx';
 import { HEALTH, USE_MOCK, healthTitle, useHealth } from '../lib/useHealth.js';
 import { VIEWS, countView, viewHref } from '../lib/views.js';
@@ -83,7 +83,17 @@ export default function SideRail({ route, onHistory }) {
       </div>
 
       <Group>Analyse</Group>
-      <a href="#/insights" title="Reports" aria-current={route.page === 'insights' ? 'page' : undefined} className={`${itemBase} ${itemTone(route.page === 'insights')} max-lg:mt-1`}>
+      <a
+        href="#/funnel"
+        title="Waterfall funnel of live tickets with pivots"
+        aria-current={route.page === 'funnel' ? 'page' : undefined}
+        className={`${itemBase} ${itemTone(route.page === 'funnel')} max-lg:mt-1`}
+      >
+        {route.page === 'funnel' && <ActiveMark />}
+        <Funnel size={17} className="shrink-0" aria-hidden />
+        <span className="hidden lg:inline">Funnel</span>
+      </a>
+      <a href="#/insights" title="Reports" aria-current={route.page === 'insights' ? 'page' : undefined} className={`${itemBase} ${itemTone(route.page === 'insights')}`}>
         {route.page === 'insights' && <ActiveMark />}
         <BarChart3 size={17} className="shrink-0" aria-hidden />
         <span className="hidden lg:inline">Reports</span>

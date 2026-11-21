@@ -16,6 +16,7 @@ import { useServerSync, useTickets } from './state/tickets.jsx';
 
 // Recharts is heavy; load the Insights tab only when it is opened.
 const InsightsPage = lazy(() => import('./pages/InsightsPage.jsx'));
+const FunnelPage = lazy(() => import('./pages/FunnelPage.jsx'));
 
 const ROLE_HOME = { creator: '#/help', manager: '#/console' };
 
@@ -34,8 +35,8 @@ export default function App() {
   if (route.page === 'landing') return <Landing onChoose={chooseRole} />;
   if (route.page === 'help') {
     return (
-      <ErrorBoundary resetKey="help">
-        <CreatorPortal />
+      <ErrorBoundary resetKey={`help/${route.id ?? ''}`}>
+        <CreatorPortal ticketId={route.id} />
       </ErrorBoundary>
     );
   }
@@ -66,6 +67,11 @@ function ManagerConsole({ route }) {
     insights: (
       <Suspense fallback={<div className="p-8 text-[13px] text-ink-3">Loading insights…</div>}>
         <InsightsPage />
+      </Suspense>
+    ),
+    funnel: (
+      <Suspense fallback={<div className="p-8 text-[13px] text-ink-3">Loading funnel…</div>}>
+        <FunnelPage />
       </Suspense>
     ),
     ticket: <TicketDetail id={route.id} />,
