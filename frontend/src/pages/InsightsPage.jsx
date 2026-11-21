@@ -57,10 +57,16 @@ function DatasetStory() {
       <section className="relative overflow-hidden rounded-2xl bg-brand-950 px-6 py-7 text-slate-300 sm:px-9 sm:py-9">
         <div aria-hidden className="pointer-events-none absolute inset-0 opacity-[0.07] [background-image:radial-gradient(circle_at_1px_1px,white_1px,transparent_0)] [background-size:22px_22px]" />
         <p className="relative max-w-5xl text-[22px] leading-[1.45] font-medium sm:text-[28px]">
-          Trained on <b className="tabular font-semibold text-white">{fmt(ops.total_volume)}</b> real support tickets,{' '}
-          <b className="tabular font-semibold text-white">{ops.languages.percentages.de}%</b> of them in German. On tickets it never saw, the gate escalates{' '}
-          <b className="tabular font-semibold text-teal-300">{Math.round(m.high_priority_incident_recall * 100)} of every 100</b> high-priority incidents, in{' '}
-          <b className="tabular font-semibold text-white">{ms(lat.total_e2e_latency_ms)}</b>.
+          Trained on <b className="tabular font-semibold text-white">{fmt(model.holdout_benchmark.kb_size ?? ops.total_volume)}</b> real support tickets in English and
+          German. On <b className="tabular font-semibold text-white">{fmt(model.holdout_benchmark.eval_sample_size)}</b> tickets it never saw, the gate escalates{' '}
+          <b className="tabular font-semibold text-teal-300">{Math.round(m.high_priority_incident_recall * 100)} of every 100</b> high-priority incidents
+          {lat.total_e2e_latency_ms != null ? (
+            <>
+              , in <b className="tabular font-semibold text-white">{ms(lat.total_e2e_latency_ms)}</b>.
+            </>
+          ) : (
+            '.'
+          )}
         </p>
         {placeholder && (
           <p className="relative mt-4 inline-flex rounded-md bg-amber-300/15 px-2.5 py-1 text-[12.5px] text-amber-200">
@@ -293,11 +299,20 @@ function ModelQuality({ m, lat, placeholder }) {
     { label: 'Draft', v: lat.grounded_synthesis_ms, color: 'bg-sky-400' },
   ];
   const total = lat.total_e2e_latency_ms;
-  const top = [...stages].sort((a, b) => b.v - a.v)[0];
+  // Retrieval and drafting need the live stack, so an offline export may only carry the classify time.
+  const full = total != null && stages.every((s) => s.v != null);
+  const top = full ? [...stages].sort((a, b) => b.v - a.v)[0] : null;
+  const speed = full
+    ? top.v / total >= 0.95
+      ? `${top.label} is almost all of the ${ms(total)}; classifying takes ${ms(lat.triage_inference_per_ticket_ms)}.`
+      : `${top.label} takes ${Math.round((top.v / total) * 100)}% of the ${ms(total)}.`
+    : lat.triage_inference_per_ticket_ms != null
+      ? `Classifying takes ${ms(lat.triage_inference_per_ticket_ms)} per ticket; the live time of every stage is shown on each triage and in the Session report.`
+      : 'The live time of every stage is shown on each triage and in the Session report.';
   return (
     <Panel
       title="How well and how fast"
-      lede={`Macro-F1 on held-out tickets for each classifier head. Queue is the hardest call, which is why low confidence hands the ticket to a person. ${top.v / total >= 0.95 ? `${top.label} is almost all of the ${ms(total)}; classifying takes ${ms(lat.triage_inference_per_ticket_ms)}.` : `${top.label} takes ${Math.round((top.v / total) * 100)}% of the ${ms(total)}.`}`}
+      lede={`Macro-F1 on held-out tickets for each classifier head. Queue is the hardest call, which is why low confidence hands the ticket to a person. ${speed}`}
       tag={placeholder ? 'Placeholder' : null}
     >
       <ul className="space-y-3">
@@ -311,7 +326,7 @@ function ModelQuality({ m, lat, placeholder }) {
           </li>
         ))}
       </ul>
-      <div className="mt-6">
+      {full && <div className="mt-6">
         <div className="mb-1.5 flex justify-between text-[13px]"><span className="font-medium text-ink-2">Time per ticket</span><span className="tabular font-semibold text-ink">{ms(total)}</span></div>
         <div className="flex h-3 gap-[2px] overflow-hidden rounded-full">
           {stages.map((s) => <span key={s.label} className={s.color} style={{ width: `${Math.max(1.5, (s.v / total) * 100)}%` }} title={`${s.label}: ${ms(s.v)}`} />)}
@@ -319,7 +334,7 @@ function ModelQuality({ m, lat, placeholder }) {
         <div className="mt-2 flex flex-wrap gap-x-5 gap-y-1 text-[12.5px] text-ink-3">
           {stages.map((s) => <span key={s.label} className="flex items-center gap-1.5"><span className={`h-2.5 w-2.5 rounded-sm ${s.color}`} />{s.label} <span className="tabular text-ink-2">{ms(s.v)}</span></span>)}
         </div>
-      </div>
+      </div>}
     </Panel>
   );
 }

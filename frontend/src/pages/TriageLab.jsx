@@ -513,6 +513,12 @@ function RetrieveCard({ t }) {
               <div className="mt-1 h-1.5 rounded-full bg-white/10">
                 <div className="lab-grow h-full rounded-full bg-teal-400/80" style={{ width: `${Math.round(p.similarity * 100)}%`, animationDelay: `${k * 160}ms` }} />
               </div>
+              {p.answer_snippet && (
+                <p className="mt-1.5 line-clamp-2 border-l-2 border-teal-400/40 pl-2 text-[13px] leading-snug text-slate-400" title={p.answer_snippet}>
+                  <span className="text-slate-500">How it was solved: </span>
+                  {p.answer_snippet}
+                </p>
+              )}
             </li>
           ))}
         </ul>

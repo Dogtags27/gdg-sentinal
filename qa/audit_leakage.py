@@ -1,150 +1,134 @@
 #!/usr/bin/env python3
-"""Data Leakage Audit Runner (QA-09).
+"""Data leakage audit (QA-09), run against the split that ml/split.py actually writes.
 
-Audits the 80/20 knowledge base and holdout test partition to mathematically certify:
-1. Zero ticket ID overlap between KB and Holdout.
-2. Complete absence of the `answer` column in inference test inputs (`test_blind.csv`).
-3. Deterministic split reproducibility (random_state=42).
-4. Generates a signed cryptographic audit report (`qa/LEAKAGE_AUDIT.md`).
+Reads ml/artifacts/splits/v1/ (or ARTIFACTS_DIR) and checks:
+1. KB and holdout ticket IDs are disjoint, and together cover every row exactly once.
+2. The split is 80/20 and was made with seed 42 (from split_manifest.json).
+3. test_inputs.csv (the only test file inference may read) holds exactly ticket_id, subject, body.
+4. No `answer` column is saved for the holdout, in test_inputs.csv or test_labels.csv.
+5. No holdout ticket body appears verbatim (after whitespace/case normalisation) in the KB.
+6. File checksums match the ones recorded in split_manifest.json when the split was made.
+
+Writes qa/LEAKAGE_AUDIT.md. Exit code 0 only when every check passes.
+Run from the repo root after `python -m ml.split`:  python qa/audit_leakage.py
 """
 
+from __future__ import annotations
+
 import hashlib
+import json
 import os
+import re
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
+
 import pandas as pd
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-PARENT_DATA = REPO_ROOT.parent / "data"
-LOCAL_DATA = REPO_ROOT / "data"
-ARTIFACTS_DATA = REPO_ROOT / "ml" / "artifacts" / "splits" / "v1"
-
+ARTIFACTS = Path(os.getenv("ARTIFACTS_DIR", REPO_ROOT / "ml" / "artifacts"))
+SPLIT_DIR = ARTIFACTS / "splits" / "v1"
 REPORT_PATH = REPO_ROOT / "qa" / "LEAKAGE_AUDIT.md"
-
-
-def find_file(name):
-    for candidate in [PARENT_DATA / name, LOCAL_DATA / name, ARTIFACTS_DATA / name]:
-        if candidate.exists():
-            return candidate
-    return None
+FILES = ("kb_train.csv", "test_inputs.csv", "test_labels.csv")
 
 
 def sha256_file(p: Path) -> str:
     h = hashlib.sha256()
     with open(p, "rb") as f:
-        while chunk := f.read(65536):
+        while chunk := f.read(1 << 16):
             h.update(chunk)
     return h.hexdigest()
 
 
-def run_leakage_audit():
-    print(f"\n{'='*82}")
-    print(f"🛡️  SentinelDesk Data Leakage & Partition Audit (QA-09)")
-    print(f"{'='*82}\n")
+def norm(text: str) -> str:
+    return re.sub(r"\s+", " ", str(text)).strip().lower()
 
-    kb_path = find_file("kb_train.csv")
-    holdout_path = find_file("test_holdout.csv")
-    blind_path = find_file("test_blind.csv")
 
-    if not kb_path or not holdout_path:
-        print(f"❌ Error: Required split datasets not found in data directories.")
+def run() -> int:
+    missing = [f for f in FILES + ("split_manifest.json",) if not (SPLIT_DIR / f).exists()]
+    if missing:
+        print(f"Split files not found in {SPLIT_DIR}: {', '.join(missing)}. Run `python -m ml.split` first.")
         return 1
 
-    print(f"• Loading Knowledge Base: {kb_path}")
-    df_kb = pd.read_csv(kb_path)
-    print(f"  Rows: {len(df_kb):,} | Columns: {list(df_kb.columns[:5])}...")
+    manifest = json.loads((SPLIT_DIR / "split_manifest.json").read_text())
+    kb = pd.read_csv(SPLIT_DIR / "kb_train.csv", keep_default_na=False)
+    inputs = pd.read_csv(SPLIT_DIR / "test_inputs.csv", keep_default_na=False)
+    labels = pd.read_csv(SPLIT_DIR / "test_labels.csv", keep_default_na=False)
 
-    print(f"• Loading Holdout Test Set: {holdout_path}")
-    df_holdout = pd.read_csv(holdout_path)
-    print(f"  Rows: {len(df_holdout):,} | Columns: {list(df_holdout.columns[:5])}...")
+    checks: list[tuple[str, bool, str]] = []
 
-    # Check 1: Ticket ID overlap
-    kb_ids = set(df_kb["ticket_id"].dropna().unique())
-    holdout_ids = set(df_holdout["ticket_id"].dropna().unique())
-    id_overlap = kb_ids.intersection(holdout_ids)
+    kb_ids, test_ids = set(kb["ticket_id"]), set(inputs["ticket_id"])
+    overlap = kb_ids & test_ids
+    checks.append(("KB and holdout ticket IDs are disjoint", not overlap, f"{len(overlap)} shared IDs"))
+    covered = len(kb_ids) + len(test_ids) == manifest["rows"]["total"] and set(labels["ticket_id"]) == test_ids
+    checks.append(("Every row lands in exactly one split", covered,
+                   f"{len(kb_ids):,} KB + {len(test_ids):,} holdout = {manifest['rows']['total']:,} rows"))
 
-    print("\n--- Audit Invariant Verification ---")
-    if id_overlap:
-        print(f"❌ FAILED: Found {len(id_overlap)} overlapping ticket IDs!")
-        return 1
-    else:
-        print(f"✅ Invariant 1 Passed: Exactly ZERO overlapping ticket IDs between KB and Holdout.")
+    total = len(kb) + len(inputs)
+    kb_pct, test_pct = 100 * len(kb) / total, 100 * len(inputs) / total
+    ratio_ok = abs(kb_pct - 80) < 0.1 and manifest["seed"] == 42 and manifest["kb_frac"] == 0.8
+    checks.append(("80/20 split with random_state=42", ratio_ok,
+                   f"{kb_pct:.1f}% / {test_pct:.1f}%, seed {manifest['seed']}"))
 
-    # Check 2: Ratio check (expecting 80/20)
-    total_rows = len(df_kb) + len(df_holdout)
-    kb_pct = (len(df_kb) / total_rows) * 100
-    holdout_pct = (len(df_holdout) / total_rows) * 100
-    print(f"✅ Invariant 2 Passed: Strict 80/20 partition ratio ({kb_pct:.1f}% KB / {holdout_pct:.1f}% Holdout).")
+    cols = list(inputs.columns)
+    checks.append(("Inference inputs hold only ticket_id, subject, body", cols == ["ticket_id", "subject", "body"],
+                   f"columns: {', '.join(cols)}"))
 
-    # Check 3: Blind test set verification (inference inputs must never have 'answer')
-    if blind_path and blind_path.exists():
-        df_blind = pd.read_csv(blind_path)
-        if "answer" in df_blind.columns:
-            print("❌ FAILED: 'answer' column detected in blind inference test input!")
-            return 1
-        else:
-            print(f"✅ Invariant 3 Passed: 'answer' column strictly excluded from blind inference inputs.")
-    else:
-        print(f"ℹ️  Note: test_blind.csv not found at candidate paths; skipping blind column check.")
+    answer_cols = [f for f, df in (("test_inputs.csv", inputs), ("test_labels.csv", labels)) if "answer" in df.columns]
+    checks.append(("No holdout `answer` is saved anywhere", not answer_cols,
+                   "none" if not answer_cols else "found in " + ", ".join(answer_cols)))
 
-    # Check 4: Checksums
-    kb_sha = sha256_file(kb_path)
-    holdout_sha = sha256_file(holdout_path)
-    blind_sha = sha256_file(blind_path) if blind_path else "N/A"
+    kb_bodies = {norm(b) for b in kb["body"]}
+    dup = sum(norm(b) in kb_bodies for b in inputs["body"])
+    checks.append(("No holdout body appears verbatim in the KB", dup == 0, f"{dup} duplicated bodies"))
 
-    print(f"\n--- Cryptographic Hashes (SHA-256) ---")
-    print(f"• kb_train.csv:     {kb_sha}")
-    print(f"• test_holdout.csv: {holdout_sha}")
-    if blind_path:
-        print(f"• test_blind.csv:   {blind_sha}")
+    shas = {f: sha256_file(SPLIT_DIR / f) for f in FILES}
+    recorded = manifest.get("sha256", {})
+    sha_ok = all(recorded.get(f) == s for f, s in shas.items())
+    checks.append(("Files match the checksums recorded at split time", sha_ok,
+                   "all match" if sha_ok else "mismatch: files changed after the split"))
 
-    # Generate Certified Markdown Audit Report
-    report_content = f"""# SentinelDesk Certified Data Leakage Audit (QA-09)
+    passed = all(ok for _, ok, _ in checks)
+    for name, ok, detail in checks:
+        print(f"{'PASS' if ok else 'FAIL'}  {name}  ({detail})")
 
-**Date of Audit:** {datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")}  
-**Auditor:** SentinelDesk QA & Verification Workstream  
-**Dataset Source:** `Tobi-Bueck/customer-support-tickets`  
-**Verdict:** 🟢 **CERTIFIED LEAKAGE-FREE (ZERO CONTAMINATION)**  
+    now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+    rows = "\n".join(f"| {name} | {detail} | {'Pass' if ok else '**Fail**'} |" for name, ok, detail in checks)
+    sizes = "\n".join(
+        f"| `{f}` | {n:,} | {desc} | `{shas[f]}` |"
+        for f, n, desc in (
+            ("kb_train.csv", len(kb), "80% knowledge base: training, calibration (last 10% = kb_val) and RAG index"),
+            ("test_inputs.csv", len(inputs), "20% holdout, inference inputs only"),
+            ("test_labels.csv", len(labels), "20% holdout labels, read only by `ml/evaluate.py` for scoring"),
+        )
+    )
+    src = manifest["source"]
+    report = f"""# Data leakage audit (QA-09)
 
----
+**Run:** {now}, by `python qa/audit_leakage.py`
+**Dataset:** `{src['repo']}` at revision `{src['revision'][:12]}`, files: {', '.join(f'`{f}`' for f in src['files'])}
+**Rows after de-duplicating on normalised body:** {manifest['rows']['total']:,}
+**Result:** {'all checks pass' if passed else 'FAILED, see below'}
 
-## 🔬 Audit Summary & Verification Invariants
+## Checks
 
-| Audit Invariant | Specification | Result | Verification Status |
-| :--- | :--- | :---: | :---: |
-| **Ticket ID Mutual Exclusivity** | `set(KB) ∩ set(Holdout) == ∅` | **0 overlap** | ✅ **VERIFIED PASSED** |
-| **Split Fraction Ratio** | 80.0% Knowledge Base / 20.0% Holdout | **{kb_pct:.1f}% / {holdout_pct:.1f}%** | ✅ **VERIFIED PASSED** |
-| **Ground Truth Answer Shielding** | `answer` column stripped from inference input | **0 answers in blind test** | ✅ **VERIFIED PASSED** |
-| **Determinism Seed** | Shuffled and partitioned with fixed PRNG | **random_state = 42** | ✅ **VERIFIED PASSED** |
+| Check | Detail | Result |
+|---|---|---|
+{rows}
 
----
+## Split files
 
-## 📦 Partition Inventory & Checksums
+| File | Rows | Use | SHA-256 |
+|---|---:|---|---|
+{sizes}
 
-| Partition File | Record Count | Description | SHA-256 Checksum |
-| :--- | :---: | :--- | :--- |
-| **`kb_train.csv`** | **{len(df_kb):,}** | 80% KB precedent vectors and labeled runbooks | `{kb_sha}` |
-| **`test_holdout.csv`** | **{len(df_holdout):,}** | 20% unseen benchmark evaluation targets | `{holdout_sha}` |
-| **`test_blind.csv`** | **{len(df_holdout):,}** | Production inference inputs (`answer` stripped) | `{blind_sha}` |
-
----
-
-## ✍️ Formal Sign-Off
-
-The SentinelDesk QA workstream certifies that **zero test answers or holdout labels** were ingested into the vector search embeddings, TF-IDF feature vocabulary, or prompt context pools. All evaluation metrics reflect authentic generalization on unseen customer support requests.
-
-**Certified by:** QA Workstream · Lead Verification Officer  
-**Timestamp:** `{datetime.now(timezone.utc).isoformat()}`  
+The split follows the brief exactly: `df.sample(frac=1.0, random_state=42)`, IDs `TKT-{{i:05d}}`, first 80% is the KB.
+The German topic file (no answers) is split the same way and only its 80% is indexed, never as a citable precedent.
 """
-
-    with open(REPORT_PATH, "w", encoding="utf-8") as f:
-        f.write(report_content)
-
-    print(f"\n📄 Certified report written to: {REPORT_PATH}")
-    print(f"🎉 Result: ZERO DATA LEAKAGE AUDIT PASSED!\n")
-    return 0
+    REPORT_PATH.write_text(report, encoding="utf-8")
+    print(f"Report written to {REPORT_PATH.relative_to(REPO_ROOT)}")
+    return 0 if passed else 1
 
 
 if __name__ == "__main__":
-    sys.exit(run_leakage_audit())
+    sys.exit(run())

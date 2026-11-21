@@ -1,87 +1,58 @@
-# SentinelDesk Technical Defense & Judge Q&A Sheet (QA-12)
+# Judge Q&A sheet (QA-12)
 
-**Audience:** Technical Judges, System Architects, ML Evaluators  
-**Purpose:** Provide concise, mathematically rigorous answers to anticipate every hard technical question during the Q&A session.
-
----
-
-### ❓ Q1: "Why use hierarchical vector retrieval instead of standard flat top-K vector search?"
-> **Answer:**  
-> Flat search across thousands of support tickets suffers from semantic blur: a network question can easily retrieve a billing ticket that happens to mention "network fees."  
->  
-> SentinelDesk uses a **2-Level Hierarchical Retriever**:
-> 1. **Level 1 (Queue Routing):** We compute an ensemble score: `0.6 × classifier_prob + 0.4 × centroid_cosine`. This routes the query into the top 1 or 2 specific departmental branches (e.g., *Technical Support* vs *Billing*).
-> 2. **Level 2 (Filtered Search):** We execute a Redis KNN vector search strictly filtered by `@queue:{...}`.  
->  
-> **Results:** Hierarchical routing reduces search candidate noise by 85%, increases top-1 precedent relevance by 18.4%, and protects p95 latency under 38ms.
+Short, accurate answers for the 3-minute Q&A. Every claim here points at code or a script that reproduces it. If a judge asks for a number that isn't on this sheet, say which script produces it rather than guessing.
 
 ---
 
-### ❓ Q2: "How do you mathematically guarantee zero hallucination in auto-drafted responses?"
-> **Answer:**  
-> We enforce an **Extractive-Grounded Generation Contract**:
-> 1. The model is strictly prohibited from answering open-domain queries. It is given verified historical runbook snippets with mandatory citation formatting `[TKT-XXXXX]`.
-> 2. Every generated draft undergoes automated post-generation validation: every factual assertion must match semantic tokens in the cited precedent.
-> 3. If validation fails after 1 retry, the engine demotes the mode to `extractive` and appends an `UNGROUNDED_DRAFT` P2 reason, diverting the ticket to human review. The engine will **never auto-send an unverified generative reply**.
+### Q1. What are your holdout metrics?
+On the 20% holdout (8,034 tickets, never used for training, tuning or indexing), from `python -m ml.evaluate`:
 
----
+| Target | Macro-F1 | Accuracy | ECE |
+|---|---|---|---|
+| type (4 classes) | 0.859 | 0.849 | 0.008 |
+| priority (3) | 0.592 | 0.605 | 0.015 |
+| queue (10) | 0.528 | 0.531 | 0.012 |
 
-### ❓ Q3: "How do you prove there is zero data leakage between your training precedents and holdout evaluation set?"
-> **Answer:**  
-> We have an automated, cryptographically signed audit (`qa/audit_leakage.py` & `qa/LEAKAGE_AUDIT.md`):
-> 1. **Partition Isolation:** The 20,000 tickets are partitioned with a locked deterministic PRNG (`random_state=42`) into 16,000 KB precedents (`TKT-00000`–`TKT-15999`) and 4,000 holdout tests (`TKT-16000`–`TKT-19999`).
-> 2. **Set Disjointness:** We mathematically verify `set(KB) ∩ set(Holdout) == ∅`.
-> 3. **Answer Stripping:** In the test inputs (`test_blind.csv`), the `answer` column is completely stripped. The model never sees holdout resolutions during inference.
+**High-priority incident recall:** 0.760 at precision 0.514 (1,462 true high-priority incidents in the holdout), using the gate's default rule: predicted type Incident and P(high) ≥ 0.26. The recall-tuned rule, P(Incident) ≥ 0.15 instead of argmax type (switch on with `"gate_incident_rule": true` in `thresholds.json`), reaches 0.858 at precision 0.438 but sends 36% of all tickets to on-call. These are the TF-IDF classifier's numbers alone; the live engine can also blend in the vote of the retrieved neighbours (`blend_weight`, tuned by `python -m ml.tune_blend`).
 
----
+### Q2. Why is queue F1 so much lower than type?
+The queue labels overlap heavily (Technical Support, IT Support and Product Support describe the same tickets) and are noisy. We don't hide it: the confidence is calibrated, low confidence fires `LOW_CONFIDENCE` and a person reviews, and retrieval searches the top two queues and falls back to a global search when the routed match is weak.
 
-### ❓ Q4: "Why decouple into a Go gateway and a private Python engine instead of an all-in-one FastAPI monolith?"
-> **Answer:**  
-> Security boundary isolation and high-throughput concurrency:
-> 1. **Perimeter PII Shield:** The Go gateway terminates public TLS, enforces rate limiting, and runs regex masking. Raw PII (Credit cards, SSNs, IPs) is scrubbed in memory before reaching Python.
-> 2. **Network Isolation:** The Python engine runs on an internal Docker network (port 8000) and is never exposed to the public internet.
-> 3. **Resilience:** If the Python ML engine experiences memory pressure during batch inference, Go handles queue buffering and serves graceful degraded responses with zero connection drops.
+### Q3. How do you prove there is no data leakage?
+`python qa/audit_leakage.py` checks the split that `ml/split.py` actually writes (result in `qa/LEAKAGE_AUDIT.md`):
+1. The split is the brief's: `sample(frac=1.0, random_state=42)`, IDs `TKT-{i:05d}`, first 80% is the KB. After de-duplicating on the normalised body that is 32,133 KB tickets and 8,034 holdout tickets.
+2. KB and holdout share no ticket IDs and no ticket body text.
+3. The only test file inference reads has exactly `ticket_id, subject, body`. The holdout `answer` column is dropped before anything is saved. Labels are read only by `ml/evaluate.py`, after predictions are made.
+4. Calibration and every threshold are tuned on `kb_val`, the last 10% of the KB, never on the holdout.
 
----
+### Q4. How do you stop the draft from making things up?
+Three layers, none of which trusts the model:
+1. **Prompt** (`engine/app/generate/prompt.py`): use only the evidence, cite every past ticket used as `[TKT-xxxxx]`, never state prices, refunds, SLA credits, deadlines, legal guarantees or integrations the evidence doesn't contain; the model must list such requests in `unsupported_requests`.
+2. **Validator** (`engine/app/generate/validator.py`): every cited ID must be one of the retrieved tickets, at least one must be cited, every number in the reply must appear in the evidence or the customer's own ticket, and the reply must be in the customer's language. On failure the model gets one retry with the reasons.
+3. **Gate:** if the retry still fails, `UNGROUNDED_DRAFT` sends the ticket to human review. With no usable precedent the engine writes a holding reply instead of generating.
 
-### ❓ Q5: "How does the system intercept adversarial prompt injections or security breaches?"
-> **Answer:**  
-> Through our dual-layer policy gate (`contracts/reason_codes.md`):
-> 1. **Prompt Injections:** Adversarial patterns (*"Ignore previous instructions"*, *"print system prompt"*) are detected before LLM invocation, triggering the `PROMPT_INJECTION` code and routing to `HUMAN_REVIEW`.
-> 2. **Security Breaches:** Words like *ransomware, root access keys, breach, malware* trigger `SECURITY_INCIDENT` (P1 severity), immediately paging the on-call engineer and halting auto-draft dispatch.
+Known limit: the number check works on digits, so "two business days" written out passes it. The prompt forbids it, and anything not auto-drafted is read by a person.
 
----
+### Q5. Why hierarchical retrieval instead of flat top-k?
+A flat search can return a billing ticket for a network question because they share words. We route first: each queue is scored as 0.6 × classifier probability + 0.4 × cosine to the queue's centroid, the top 2 queues are kept (or 1 if it scores ≥ 0.80), and the KNN search runs inside them. If the routed top match is weak, or more than 0.05 below the global top match, the global result is used instead. `python -m ml.indexing.retrieval_quality` compares flat and hierarchical retrieval (useful@1, agreement@5, routing accuracy); it needs the embedded KB.
 
-### ❓ Q6: "How do you handle multi-lingual support across English and German?"
-> **Answer:**  
-> 1. Our language detection stage uses fast character n-gram heuristics to categorize tickets as `en` or `de`.
-> 2. Precedent vectors use `gemini-embedding-2` / `all-MiniLM-L6-v2`, which map English and German semantics into a shared cross-lingual embedding space. A German ticket can cite an English precedent and translate the actionable steps into German.
-> 3. Any unsupported language triggers `UNSUPPORTED_LANGUAGE` (P2), safely diverting to a human linguist.
+### Q6. How do you handle German and English?
+Language is detected from the text (`langdetect` with a stopword fallback for short tickets). The embedding model (OpenAI `text-embedding-3-small`, 768 dimensions) is multilingual, so a German ticket can retrieve an English precedent. The prompt tells the model to translate the evidence's meaning and answer in the customer's language, and the validator checks it did. Any other language fires `UNSUPPORTED_LANGUAGE` and goes to a person.
 
----
+### Q7. What happens to prompt injections and security incidents?
+The ticket goes into the prompt inside `<ticket>` tags, marked as untrusted data, with an explicit rule to ignore instructions in it. Separately, the gate matches injection patterns in English and German (`engine/app/policy/keywords.py`) and raises `PROMPT_INJECTION`, so a person reviews whatever was drafted. Ransomware, breach or "gehackt" style terms raise `SECURITY_INCIDENT`, which is P1: on-call is paged and the draft is held.
 
-### ❓ Q7: "What happens if the Gemini LLM times out or hits an API rate limit?"
-> **Answer:**  
-> SentinelDesk is built with a **Zero-Crash Extractive Fallback**:
-> 1. Every LLM call has an 8-second circuit breaker.
-> 2. If Gemini times out or throws an HTTP 429, the engine falls back to `mode: "extractive"`—using the highest-ranking historical precedent text directly.
-> 3. It marks the gate with `ENGINE_DEGRADED` (P2) so an operator verifies the response before it reaches the customer.
+### Q8. Why a Go gateway in front of a Python engine?
+The gateway is the only public service. It validates requests against the contract, rate-limits, and masks emails, phone numbers, IPs, IBANs, card and account numbers before anything reaches the engine, so the engine, its logs and the LLM only see placeholders like `[EMAIL_1]`. The engine and Redis are on the internal Docker network only; Caddy terminates TLS in production.
 
----
+### Q9. What if the LLM is down or slow?
+Generation tries OpenAI, then Gemini (`LLM_TIMEOUT_S`, 10 s by default). If both fail, the engine quotes the best precedent's answer in the customer's language verbatim (extractive mode), or writes a holding reply, and raises `ENGINE_DEGRADED`, so a person checks it. The triage, retrieval and gate still work.
 
-### ❓ Q8: "How does the Active Outage Burst detection algorithm work?"
-> **Answer:**  
-> In `engine/app/policy/burst.py`, the engine tracks incoming incident signatures inside a sliding 10-minute window. If 3 or more tickets share an infrastructure cluster key (e.g. `VPN`, `Database 500`), the `ACTIVE_OUTAGE` P1 reason fires. This creates an incident cluster ID and alerts on-call staff with a single blast-radius summary rather than spamming 50 individual alerts.
+### Q10. How does outage burst detection work?
+`engine/app/policy/burst.py` keeps a rolling 10-minute window of tickets. Tickets in related queues that share an outage term ("vpn", "ausfall", "504", ...) form a cluster; from the third ticket on, `ACTIVE_OUTAGE` (P1) fires and the console shows the major-incident banner with the cluster's ticket count. It keeps state in memory, which is why the engine runs with one worker.
 
----
+### Q11. What is calibration and why does it matter here?
+The classifier's probabilities are temperature-scaled on `kb_val`, so a 70% confidence is right about 70% of the time. Holdout expected calibration error is 0.008 to 0.015. The gate's confidence floor and high-priority threshold are probabilities, so they only mean something if the probabilities are calibrated.
 
-### ❓ Q9: "What is your Expected Calibration Error (ECE) and why is it important?"
-> **Answer:**  
-> Standard deep learning classifiers are frequently overconfident (predicting 99% probability when true accuracy is 70%). SentinelDesk uses isotonic calibration to keep our **Expected Calibration Error (ECE) ≤ 0.04**. This means when our model predicts 85% confidence, it is empirically correct 85% of the time, allowing us to establish strict, trustworthy safety thresholds.
-
----
-
-### ❓ Q10: "What is the economic ROI and cost per ticket?"
-> **Answer:**  
-> 1. **Compute Cost:** With sublinear TF-IDF + Gemini 2.0 Flash, average inference cost is **$0.0004 per ticket**.
-> 2. **Labor Savings:** By auto-drafting 62.7% of tickets and eliminating manual PII redaction, human MTTR drops from 22 minutes to under 2 minutes, saving approximately $6.20 per resolved ticket in enterprise IT environments.
+### Q12. Why TF-IDF and logistic regression instead of a fine-tuned transformer?
+It trains in minutes on a laptop, predicts in milliseconds on CPU, calibrates cleanly, and on this dataset the labels, not the model, are the ceiling (see Q2). The retrieval neighbours add a semantic signal on top.
