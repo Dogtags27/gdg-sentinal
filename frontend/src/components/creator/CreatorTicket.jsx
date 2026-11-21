@@ -15,6 +15,12 @@ const MIDDLE = {
   resolved: 'Handled by support',
 };
 
+// A title for tickets sent without a subject: the first words of the message, cut at a word.
+const headline = (body = '') => {
+  const t = body.trim().split('\n')[0];
+  return t.length <= 80 ? t : `${t.slice(0, 80).replace(/\s+\S*$/, '')}…`;
+};
+
 function Steps({ view }) {
   const resolved = view.status === 'resolved';
   const steps = [
@@ -110,7 +116,7 @@ export default function CreatorTicket({ id }) {
           </span>
         </div>
         <h1 className="mt-2 text-[21px] font-semibold tracking-tight text-ink" lang={view.language}>
-          {view.subject || view.body.slice(0, 80) || 'Your ticket'}
+          {view.subject || headline(view.body) || 'Your ticket'}
         </h1>
         <p className="mt-0.5 text-[13px] text-ink-3">Submitted {when(view.created_at)}</p>
 

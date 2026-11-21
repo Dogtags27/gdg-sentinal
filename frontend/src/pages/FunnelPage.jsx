@@ -22,7 +22,7 @@ const SOURCES = [
   { id: 'test', label: 'Tests & drills', test: (t) => sourceOf(t) !== 'Customer' },
 ];
 const PIVOTS = [
-  { id: 'language', label: 'Language', get: (t) => LANGUAGES[t.language.code] ?? t.language.code.toUpperCase() },
+  { id: 'language', label: 'Language', get: (t) => LANGUAGES[t.language.code] ?? 'Other' }, // too short or not EN/DE
   { id: 'queue', label: 'Queue', get: (t) => t.classification.queue.label },
   { id: 'priority', label: 'Priority', get: (t) => PRIORITIES[t.classification.priority.label]?.label ?? t.classification.priority.label },
   { id: 'type', label: 'Type', get: (t) => t.classification.type.label },
