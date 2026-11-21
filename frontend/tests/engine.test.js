@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { analyze, detectLanguage, maskPII } from '../src/api/mockEngine.js';
+import { readFileSync } from 'node:fs';
+import { analyze, detectLanguage, maskPII, mergeEntities } from '../src/api/mockEngine.js';
 import { ApiError, normalizeTriage, serverMessage } from '../src/api/normalize.js';
 import { SAMPLES, OUTAGE_BURST } from '../src/data/samples.js';
 import { buildSeedTickets } from '../src/data/mockTickets.js';
@@ -46,23 +47,24 @@ test('keywords do not over-fire on harmless mentions', () => {
   assert.ok(!codes(analyze({ subject: 'Training', body: 'We would like phishing awareness training for staff.' })).includes('SECURITY_INCIDENT'));
 });
 
-test('PII masking', () => {
-  const cases = [
-    ['mail anna.keller@example.com now', 'mail [EMAIL] now', 'EMAIL'],
-    ['IBAN DE89370400440532013000 bitte', 'IBAN [IBAN] bitte', 'IBAN'],
-    ['IBAN DE89 3704 0044 0532 0130 00.', 'IBAN [IBAN].', 'IBAN'],
-    ['card 4111 1111 1111 1111 expired', 'card [CARD] expired', 'CARD'],
-    ['call +49 30 1234 5678 today', 'call [PHONE] today', 'PHONE'],
-    ['call 030 1234567 today', 'call [PHONE] today', 'PHONE'],
-  ];
-  for (const [input, out, type] of cases) {
-    const r = maskPII(input);
-    assert.equal(r.text, out, input);
-    assert.ok(r.entities.some((e) => e.type === type), input);
+// Same table as the Go gateway's tests, so the mock and backend/internal/pii agree.
+const PII_CASES = JSON.parse(readFileSync(new URL('../../backend/internal/pii/testdata/cases.json', import.meta.url), 'utf8'));
+
+test('PII masking matches the gateway cases', () => {
+  for (const c of PII_CASES) {
+    const r = maskPII(c.in);
+    assert.equal(r.text, c.out, c.name);
+    assert.deepEqual(r.entities, c.masked, c.name);
   }
-  for (const keep of ['order 123456789 shipped', 'error 0x80070005 on update', 'ticket TKT-24017', 'version 2.14.3']) {
-    assert.equal(maskPII(keep).text, keep, keep);
-  }
+});
+
+test('PII counts from subject and body are merged per type', () => {
+  const r = analyze({ subject: 'Mail a@b.de', body: 'or c@d.de, call 030 1234567' });
+  assert.deepEqual(r.pii.masked, [{ type: 'EMAIL', count: 2 }, { type: 'PHONE', count: 1 }]);
+  assert.deepEqual(mergeEntities([{ type: 'EMAIL', count: 1 }], [{ type: 'PHONE', count: 2 }, { type: 'EMAIL', count: 1 }]), [
+    { type: 'EMAIL', count: 2 },
+    { type: 'PHONE', count: 2 },
+  ]);
 });
 
 test('language detection', () => {

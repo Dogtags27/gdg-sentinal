@@ -125,7 +125,7 @@ const FALLBACK = {
   de: 'vielen Dank für Ihre Nachricht. Ähnliche Tickets wurden wie in [c0] und [c1] beschrieben gelöst. Ein Mitarbeiter prüft und ergänzt diese Antwort.',
 };
 
-// ---------- gateway PII masking (mirrors backend/internal/pii) ----------
+// ---------- gateway PII masking (mirrors backend/internal/pii; shared cases in its testdata/cases.json) ----------
 function luhn(digits) {
   let sum = 0;
   for (let i = 0; i < digits.length; i++) {
@@ -139,7 +139,8 @@ const PII_RULES = [
   { type: 'EMAIL', re: /[\w.+-]+@[\w-]+\.[\w.-]+/g },
   // Compact or 4-spaced, any final group length (DE IBANs end in a 2-char group).
   { type: 'IBAN', re: /\b[A-Z]{2}\d{2}(?: ?[A-Z0-9]{4}){2,7}(?: ?[A-Z0-9]{1,3})?\b/g },
-  { type: 'CARD', re: /\b(?:\d[ -]?){12,18}\d\b/g, keep: (m) => !luhn(m.replace(/\D/g, '')) },
+  // Grouped numbers are always masked; a bare digit run must pass Luhn so long order numbers stay readable.
+  { type: 'CARD', re: /\b(?:\d[ -]?){12,18}\d\b/g, keep: (m) => !/[ -]/.test(m) && !luhn(m.replace(/\D/g, '')) },
   {
     type: 'PHONE',
     re: /(?<![\w-])(?:\+\d{1,3}[\s-]?)?\(?0?\d{2,4}\)?[\s\-/]?\d{3,4}[\s-]?\d{3,5}(?![\w])/g,
@@ -158,6 +159,13 @@ export function maskPII(text) {
     });
   }
   return { text: out, entities: Object.entries(found).map(([type, count]) => ({ type, count })) };
+}
+
+// Same as pii.Merge in Go: one entry per type, counts added.
+export function mergeEntities(...lists) {
+  const m = new Map();
+  for (const e of lists.flat()) m.set(e.type, (m.get(e.type) || 0) + e.count);
+  return [...m].map(([type, count]) => ({ type, count }));
 }
 
 // ---------- the pipeline ----------
@@ -264,7 +272,7 @@ export function analyze(input, ctx = {}) {
     gate: { decision, reasons },
     draft,
     latency_ms: latency,
-    pii: { masked: [...subject.entities, ...body.entities] },
+    pii: { masked: mergeEntities(subject.entities, body.entities) },
     burst: ctx.burst && category === 'outage' ? { cluster_id: 'BURST-VPN-01' } : null,
   };
 }
