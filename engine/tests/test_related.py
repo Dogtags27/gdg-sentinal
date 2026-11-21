@@ -133,3 +133,8 @@ def test_triage_prefetches_readings_for_customer_tickets_only(client, monkeypatc
     client.post("/v1/triage", json={"body": "VPN down again", "ticket_id": "LIVE-PREF1"})
     client.post("/v1/triage", json={"body": "VPN down again", "ticket_id": "TEST-PREF2"})
     assert seen == ["LIVE-PREF1"]
+
+
+def test_literal_newlines_in_knowledge_base_text_are_cleaned():
+    assert related._clip("Sehr geehrte/r [Name],\n\nich helfe gern.", 100) == "Sehr geehrte/r [Name], ich helfe gern."
+    assert related._clip("word " * 50, 20).endswith("…") and len(related._clip("word " * 50, 20)) <= 20

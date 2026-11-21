@@ -16,11 +16,13 @@ const PLACEHOLDER_WORDS = {
 };
 
 function Readable({ text }) {
-  const parts = String(text ?? '').split(/(<[^<>\s]{1,40}>)/g);
+  // <tel_num> style and the dataset's other style, [Name].
+  const parts = String(text ?? '').split(/(<[^<>\s]{1,40}>|\[name\])/gi);
   return parts.map((p, i) => {
-    const m = /^<([^<>\s]+)>$/.exec(p);
+    const m = /^<([^<>\s]+)>$|^\[(name)\]$/i.exec(p);
     if (!m) return p;
-    const word = PLACEHOLDER_WORDS[m[1].toLowerCase()] ?? m[1].replace(/_/g, ' ');
+    const key = (m[1] ?? m[2]).toLowerCase();
+    const word = PLACEHOLDER_WORDS[key] ?? key.replace(/_/g, ' ');
     return (
       <span key={i} title="Hidden for privacy" className="rounded bg-sand px-1 text-[0.92em] text-ink-3">
         {word}

@@ -69,7 +69,8 @@ ENTRIES (JSON):
 
 
 def _clip(text: Any, limit: int) -> str:
-    t = " ".join(str(text or "").split())
+    # Some knowledge-base answers carry literal "\n" sequences instead of line breaks.
+    t = " ".join(str(text or "").replace("\\n", " ").split())
     if len(t) <= limit:
         return t
     return t[: limit - 1].rsplit(" ", 1)[0] + "…"
