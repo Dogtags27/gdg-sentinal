@@ -10,6 +10,7 @@ import CreatorPortal from './pages/CreatorPortal.jsx';
 import TriageDashboard from './pages/TriageDashboard.jsx';
 import KanbanBoard from './pages/KanbanBoard.jsx';
 import TicketDetail from './pages/TicketDetail.jsx';
+import TriageLab from './pages/TriageLab.jsx';
 import { go, useHashRoute } from './lib/useHashRoute.js';
 import { useServerSync } from './state/tickets.jsx';
 
@@ -56,6 +57,8 @@ function ManagerConsole({ route }) {
       </Suspense>
     ),
     ticket: <TicketDetail id={route.id} />,
+    // Test sandbox: paste any ticket and inspect the full triage (tickets are tagged TEST-).
+    lab: <TriageLab />,
   }[route.page];
 
   return (

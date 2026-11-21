@@ -28,16 +28,16 @@ Holdout of **8,034** tickets (20% of 40,167 de-duplicated rows; KB 32,133, of wh
 
 | Target | Macro-F1 | Accuracy | ECE |
 |---|---|---|---|
-| type (4) | 0.859 | 0.849 | 0.008 |
-| priority (3) | 0.592 | 0.605 | 0.015 |
-| queue (10) | 0.528 | 0.531 | 0.012 |
+| type (4) | 0.859 (blend: **0.894**) | 0.849 (0.891) | 0.008 (0.059) |
+| priority (3) | 0.592 (blend: **0.704**) | 0.605 (0.718) | 0.015 (0.113) |
+| queue (10) | 0.528 (blend: **0.639**) | 0.531 (0.655) | 0.012 (0.129) |
 
 **High-priority incident recall** (1,462 true high-priority incidents):
 
 | Rule | Recall | Precision | Share of tickets flagged |
 |---|---|---|---|
-| Gate default: argmax type = Incident and P(high) >= 0.26 | 0.760 | 0.514 | 26.9% |
-| Recall-tuned: P(Incident) >= 0.15 and P(high) >= 0.26 (`gate_incident_rule: true`) | 0.858 | 0.438 | 35.7% |
+| Gate default: argmax type = Incident and P(high) >= 0.26 | 0.760 (blend: **0.870**) | 0.514 (0.534) | 26.9% (29.7%) |
+| Recall-tuned: P(Incident) >= 0.15 and P(high) >= 0.26 (`gate_incident_rule: true`) | 0.858 (blend: **0.934**) | 0.438 (0.436) | 35.7% (39.0%) |
 
 Thresholds are tuned on `kb_val` (recall target 0.90; the tuned rule reached 0.904 there). Per-class F1: type Request 0.99, Change 0.97, Incident 0.82, Problem 0.66; priority high 0.64, medium 0.61, low 0.52. Queue labels overlap heavily, which is why low confidence goes to a person.
 

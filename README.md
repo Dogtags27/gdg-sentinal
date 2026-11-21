@@ -11,22 +11,24 @@ For every incoming ticket (subject optional, body required) SentinelDesk:
 
 ## Results
 
-All numbers are on the 20% holdout (**8,034 tickets**) that was never used for training, tuning or indexing. Reproduce them with the commands under [Evaluation](#evaluation); no API key is needed.
+All numbers are on the 20% holdout (**8,034 tickets**) that was never used for training, tuning or indexing. The deployed engine blends the classifier with the votes of the 5 nearest past tickets (`blend_weight` 0.5, tuned on `kb_val`).
 
-| Target | Macro-F1 | Accuracy | Calibration error (ECE) |
-|---|---|---|---|
-| Type (4 classes) | **0.859** | 0.849 | 0.008 |
-| Priority (3) | **0.592** | 0.605 | 0.015 |
-| Queue (10) | **0.528** | 0.531 | 0.012 |
+| Target | Macro-F1, deployed (blend) | Accuracy | ECE | Macro-F1, classifier alone | ECE |
+|---|---|---|---|---|---|
+| Type (4 classes) | **0.894** | 0.891 | 0.059 | 0.859 | 0.008 |
+| Priority (3) | **0.704** | 0.718 | 0.113 | 0.592 | 0.015 |
+| Queue (10) | **0.639** | 0.655 | 0.129 | 0.528 | 0.012 |
 
-**High-priority incident recall** (1,462 true high-priority incidents in the holdout):
+The neighbour vote lifts every head by 4 to 11 points. Its votes are not calibrated, so the blended confidence is less calibrated than the classifier's on its own; the gate thresholds are tuned on the blended scores.
+
+**High-priority incident recall** (1,462 true high-priority incidents in the holdout, deployed engine):
 
 | Gate rule | Recall | Precision | Tickets sent to on-call |
 |---|---|---|---|
-| Default: predicted Incident and P(high) ≥ 0.26 | **0.760** | 0.514 | 26.9% |
-| Recall-tuned: P(Incident) ≥ 0.15 and P(high) ≥ 0.26 | **0.858** | 0.438 | 35.7% |
+| Live: predicted Incident and P(high) ≥ 0.26 | **0.870** | 0.534 | 29.7% |
+| Recall-tuned: P(Incident) ≥ 0.15 and P(high) ≥ 0.26 | **0.934** | 0.436 | 39.0% |
 
-The recall-tuned rule is one setting away (`"gate_incident_rule": true` in `thresholds.json`). Thresholds are tuned on `kb_val`, the last 10% of the knowledge base, never on the holdout. These are the classifier's numbers alone; the live engine can also blend in the votes of the retrieved neighbours.
+The recall-tuned rule is one setting away (`"gate_incident_rule": true` in `thresholds.json`). Thresholds are tuned on `kb_val`, the last 10% of the knowledge base, never on the holdout. The classifier-alone numbers need no API key; the blended ones need the embedded knowledge base (`python -m ml.indexing.embed`, then `python -m ml.evaluate --blend`).
 
 **Latency:** language detection 2.6 ms and classification 9.0 ms per ticket (p50, offline, one laptop). Retrieval and drafting depend on Redis and the LLM; the console shows the real time of every stage on every ticket.
 
@@ -44,7 +46,7 @@ The recall-tuned rule is one setting away (`"gate_incident_rule": true` in `thre
 | Escalation and safety gate | [`engine/app/policy/gate.py`](engine/app/policy/gate.py): high-priority incident, low confidence, no precedent, unsupported request, plus security, outage, legal, prompt injection, language, ungrounded draft, degraded engine. Reason codes: [`contracts/reason_codes.md`](contracts/reason_codes.md) |
 | Retrieval of top-k precedents | Hierarchical search in Redis (queue routing, then KNN inside the routed queues, global fallback): [`engine/app/retrieval/search.py`](engine/app/retrieval/search.py) |
 | Grounded reply with citations, no invented policies | Prompt: [`engine/app/generate/prompt.py`](engine/app/generate/prompt.py). Validator (cited IDs must be retrieved, numbers must be in the evidence, language must match, one retry): [`engine/app/generate/validator.py`](engine/app/generate/validator.py) |
-| Live triage console | React console: **Live triage** page (`#/lab`) for pasting any ticket; Overview, Board, ticket detail and Reports: [`frontend/`](frontend/README.md) |
+| Live triage console | React console. Landing page with two roles: **ticket creators** submit and track their own tickets (`#/help`); **incident managers** get Overview, Board, ticket detail, Reports and **Live triage** (`#/lab`) for pasting any ticket: [`frontend/`](frontend/README.md) |
 | Bonus: cross-lingual precedents | Multilingual embeddings; the prompt translates evidence into the reply language |
 | Bonus: outage burst detection | [`engine/app/policy/burst.py`](engine/app/policy/burst.py) and the major-incident banner |
 | Bonus: PII guardrail | The Go gateway masks emails, phones, IPs, IBANs, cards and account numbers before the engine or any LLM sees the text: [`backend/internal/pii`](backend/internal/pii) |

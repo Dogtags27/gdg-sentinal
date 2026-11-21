@@ -18,6 +18,7 @@ function parse() {
   if (parts[0] === 'view' && parts[1]) return { page: 'dashboard', view: decode(parts[1]) };
   if (parts[0] === 'board') return { page: 'board' };
   if (parts[0] === 'insights') return { page: 'insights' };
+  if (parts[0] === 'lab') return { page: 'lab' };
   if (parts[0] === 'help') return { page: 'help' };
   if (parts[0] === 'console') return { page: 'dashboard' };
   return { page: 'landing' };

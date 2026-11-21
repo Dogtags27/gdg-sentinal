@@ -58,7 +58,7 @@ flowchart LR
     KB --> TRAIN["Classifier training"]
     TEST --> INPUTS["test_inputs.csv<br>ticket_id, subject, body only"]
     TEST --> LABELS["test_labels.csv<br>no answer column; read only by ml/evaluate.py"]
-    INPUTS --> EVAL["Holdout report<br>type 0.859, priority 0.592, queue 0.528 macro-F1"]
+    INPUTS --> EVAL["Holdout report<br>type 0.894, priority 0.704, queue 0.639 macro-F1"]
     LABELS --> EVAL
 ```
 

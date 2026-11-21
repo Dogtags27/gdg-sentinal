@@ -9,11 +9,11 @@ On the 20% holdout (8,034 tickets, never used for training, tuning or indexing),
 
 | Target | Macro-F1 | Accuracy | ECE |
 |---|---|---|---|
-| type (4 classes) | 0.859 | 0.849 | 0.008 |
-| priority (3) | 0.592 | 0.605 | 0.015 |
-| queue (10) | 0.528 | 0.531 | 0.012 |
+| type (4 classes) | 0.894 (classifier alone 0.859) | 0.891 | 0.059 (alone 0.008) |
+| priority (3) | 0.704 (alone 0.592) | 0.718 | 0.113 (alone 0.015) |
+| queue (10) | 0.639 (alone 0.528) | 0.655 | 0.129 (alone 0.012) |
 
-**High-priority incident recall:** 0.760 at precision 0.514 (1,462 true high-priority incidents in the holdout), using the gate's default rule: predicted type Incident and P(high) ≥ 0.26. The recall-tuned rule, P(Incident) ≥ 0.15 instead of argmax type (switch on with `"gate_incident_rule": true` in `thresholds.json`), reaches 0.858 at precision 0.438 but sends 36% of all tickets to on-call. These are the TF-IDF classifier's numbers alone; the live engine can also blend in the vote of the retrieved neighbours (`blend_weight`, tuned by `python -m ml.tune_blend`).
+**High-priority incident recall (deployed, with the neighbour-vote blend):** 0.870 at precision 0.534 (1,462 true high-priority incidents in the holdout), using the gate's default rule: predicted type Incident and P(high) ≥ 0.26. The recall-tuned rule, P(Incident) ≥ 0.15 instead of argmax type (switch on with `"gate_incident_rule": true` in `thresholds.json`), reaches 0.934 at precision 0.436 but sends 36% of all tickets to on-call. These are the TF-IDF classifier's numbers alone; the live engine can also blend in the vote of the retrieved neighbours (`blend_weight`, tuned by `python -m ml.tune_blend`).
 
 ### Q2. Why is queue F1 so much lower than type?
 The queue labels overlap heavily (Technical Support, IT Support and Product Support describe the same tickets) and are noisy. We don't hide it: the confidence is calibrated, low confidence fires `LOW_CONFIDENCE` and a person reviews, and retrieval searches the top two queues and falls back to a global search when the routed match is weak.

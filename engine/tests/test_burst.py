@@ -63,6 +63,13 @@ def test_resending_the_same_ticket_does_not_build_a_burst(client):
     assert all(r["burst"] is None for r in results)
 
 
+def test_live_triage_test_tickets_never_count_toward_real_bursts(client):
+    for i, body in enumerate(VPN[:2]):
+        send(client, body, ticket_id=f"TEST-LAB{i}")
+    d = send(client, VPN[2])
+    assert d["burst"] is None
+
+
 def test_warmup_tickets_never_count_toward_real_bursts(client):
     for i, body in enumerate(VPN[:2]):
         send(client, body, ticket_id=f"WARMUP-1-{i}")

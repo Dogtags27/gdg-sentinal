@@ -138,7 +138,8 @@ export default function TriageLab() {
     setStep(0);
     setSent({ subject: subject.trim(), body });
     try {
-      const t = await triage({ subject: subject.trim(), body });
+      // TEST- ids: a manager's test ticket runs the full pipeline but never trips a real outage burst.
+      const t = await triage({ subject: subject.trim(), body, ticket_id: `TEST-${Date.now().toString(36).toUpperCase()}` });
       if (id !== runId.current) return;
       setResult(t);
       if (reduce) {

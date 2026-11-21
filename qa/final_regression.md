@@ -17,11 +17,11 @@ Status is what was verified on 2026-11-21 on a laptop, without the cloud keys. R
 | **3** | Python tests (engine + ML) | All pass, 1 skipped without Redis | `python -m pytest` | ✅ |
 | **4** | Go gateway tests | All pass | `cd backend && go test ./...` | ✅ |
 | **5** | Leakage audit on the real split | 7/7 checks pass | `python -m ml.split && python qa/audit_leakage.py` | ✅ 7/7 |
-| **6** | Holdout metrics reproduce | type 0.859, priority 0.592, queue 0.528 macro-F1 | `python -m ml.train && python -m ml.evaluate` | ✅ |
+| **6** | Holdout metrics reproduce | type 0.894, priority 0.704, queue 0.639 macro-F1 (blend); 0.859 / 0.592 / 0.528 classifier alone | `python -m ml.train && python -m ml.evaluate --blend` | ✅ |
 | **7** | Golden set against the real pipeline | 30/30 expected gate decisions | `python qa/run_golden_set.py --endpoint <host>/api/v1/triage` | Run on the stack |
 | **8** | Cloud access | OpenAI, R2, Redis say OK | `python infra/check_access.py` | Run on the stack |
 | **9** | No secrets in git | `.env` and `ml/artifacts/` ignored | `git check-ignore -v .env ml/artifacts/` | ✅ |
-| **10** | Simulate outage | Banner appears, `ACTIVE_OUTAGE` fires | Overview → "Simulate an outage" | Run on the stack |
+| **10** | Outage drill | Banner appears, `ACTIVE_OUTAGE` fires | Overview → "Outage drill" | Run on the stack |
 | **11** | Keyboard | `/` focuses search, Esc closes dialogs, ← → step through precedents | In the console | ✅ |
 
 Without `--endpoint`, `run_golden_set.py` only checks the golden set against its own keyword lists, and `score_drafts.py` scores the sample drafts written into the script. Neither exercises the real engine, so neither replaces row 7.

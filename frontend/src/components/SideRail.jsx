@@ -1,4 +1,4 @@
-import { BarChart3, History, KanbanSquare, ListChecks } from 'lucide-react';
+import { BarChart3, History, KanbanSquare, ListChecks, Radar } from 'lucide-react';
 import { useTickets } from '../state/tickets.jsx';
 import { HEALTH, USE_MOCK, healthTitle, useHealth } from '../lib/useHealth.js';
 import { VIEWS, countView, viewHref } from '../lib/views.js';
@@ -36,6 +36,14 @@ export default function SideRail({ route, onHistory }) {
   const top = [
     { key: 'overview', href: '#/console', icon: ListChecks, label: 'Overview', active: (onDashboard && view === 'needs') || route.page === 'ticket', n: needs, hot: true },
     { key: 'board', href: '#/board', icon: KanbanSquare, label: 'Board', active: route.page === 'board', n: openCount },
+    {
+      key: 'lab',
+      href: '#/lab',
+      icon: Radar,
+      label: 'Live triage',
+      tip: 'Test sandbox: paste any ticket and see the full triage. Test tickets never trip a real outage.',
+      active: route.page === 'lab',
+    },
   ];
 
   return (
@@ -44,8 +52,8 @@ export default function SideRail({ route, onHistory }) {
       className="flex w-14 shrink-0 flex-col border-t border-white/10 bg-brand-950 px-2 py-3 lg:w-[216px]"
     >
       <div className="hidden px-2.5 pb-1.5 text-[11.5px] font-medium text-slate-400 lg:block">Work</div>
-      {top.map(({ key, href, icon: Icon, label, active, n, hot }) => (
-        <a key={key} href={href} title={label} aria-current={active ? 'page' : undefined} className={`${itemBase} ${itemTone(active)}`}>
+      {top.map(({ key, href, icon: Icon, label, tip, active, n, hot }) => (
+        <a key={key} href={href} title={tip ?? label} aria-current={active ? 'page' : undefined} className={`${itemBase} ${itemTone(active)}`}>
           {active && <ActiveMark />}
           <Icon size={17} className="shrink-0" aria-hidden />
           <span className="hidden lg:inline">{label}</span>

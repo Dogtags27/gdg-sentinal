@@ -4,14 +4,14 @@
 **Presenters:** Speaker 1 (product and safety), Speaker 2 (system and data)
 **Surface:** the deployed console, or `http://localhost:8080` (gateway serving the built console). Fallbacks are at the end.
 
-Every scenario below is a built-in sample on the **Live triage** page (`#/lab`), so nothing needs to be typed under pressure. Judges paste their own tickets on the same page.
+Open the app, choose **I resolve incidents** on the landing page, then use **Live triage** (`#/lab`) in the side rail. Every scenario below is a built-in sample there, so nothing needs to be typed under pressure. Judges paste their own tickets on the same page. To show the customer side, choose **I need help** on the landing page: a plain form, a confirmation, and the customer's own ticket history.
 
 ```
 0:00-0:30  Problem and architecture
 0:30-1:30  German hospital VPN outage -> escalated to on-call, German draft held
 1:30-2:20  English password reset -> grounded auto-draft with citations
 2:20-3:00  Refund demand with a prompt injection -> human review, nothing promised
-3:00-3:30  Simulate an outage -> major-incident banner
+3:00-3:30  Outage drill -> major-incident banner
 3:30-4:30  Holdout metrics on the Reports page
 4:30-5:00  Safeguards and close
 ```
@@ -54,11 +54,11 @@ Every scenario below is a built-in sample on the **Live triage** page (`#/lab`),
 >
 > Optional, if time allows: **EN · Charged twice, full of personal data** shows `[EMAIL_1]`, `[CARD_1]`, `[IBAN_1]` placeholders. The masking happens in the gateway, so the engine and the LLM never see the originals.
 
-### 3:00-3:30 Simulate an outage
+### 3:00-3:30 Outage drill
 
-**Screen:** Overview → **Simulate an outage**.
+**Screen:** Overview → **Outage drill**.
 
-> **Speaker 2:** "Four VPN tickets arrive within seconds, in English and German. The burst detector looks for tickets in related queues that share an outage term, such as 'vpn', inside a rolling 10-minute window. From the third one on it raises `ACTIVE_OUTAGE`, those tickets go to on-call, and the major-incident banner appears with the ticket count."
+> **Speaker 2:** "Four VPN tickets arrive within seconds, in English and German. The burst detector counts distinct new tickets that share an outage term, such as 'vpn', inside a rolling 5-minute window. Drill and test tickets run in their own window, so a demo can never mark a real ticket as an outage. From the third one on it raises `ACTIVE_OUTAGE`, those tickets go to on-call, and the major-incident banner appears with the ticket count."
 
 ### 3:30-4:30 Holdout metrics
 
@@ -66,9 +66,9 @@ Every scenario below is a built-in sample on the **Live triage** page (`#/lab`),
 
 > **Speaker 1:** "All numbers are on 8,034 held-out tickets the model never saw. We split the data exactly as the brief says, seed 42, 80/20, and our leakage audit checks the two sets share no ticket IDs, no ticket text, and that no holdout answer is saved anywhere."
 >
-> - **High-priority incident recall:** the gate escalates 76 of every 100 true high-priority incidents (precision 0.514). A recall-tuned rule, one setting away, catches 86 of 100 at the cost of sending about a third of all tickets to on-call. Either way, everything the gate does not auto-draft is read by a person.
-> - **Macro-F1:** type 0.859, priority 0.592, queue 0.528 across 10 queues. Queue is the hardest call, which is why low confidence goes to a person.
-> - **Calibration:** expected calibration error of 0.008 to 0.015, so a 70% confidence really means about 70%.
+> - **High-priority incident recall:** the gate escalates 87 of every 100 true high-priority incidents (precision 0.534). A recall-tuned rule, one setting away, catches 93 of 100 at the cost of sending about 39% of all tickets to on-call. Either way, everything the gate does not auto-draft is read by a person.
+> - **Macro-F1:** type 0.894, priority 0.704, queue 0.639 across 10 queues, with the classifier blended with the votes of the 5 most similar past tickets. Queue is the hardest call, which is why low confidence goes to a person.
+> - **Calibration:** the classifier alone has an expected calibration error of 0.008 to 0.015. The neighbour vote adds 4 to 11 points of F1 but loosens calibration (0.06 to 0.13), so the gate's thresholds are tuned on the blended scores.
 
 ### 4:30-5:00 Safeguards and close
 

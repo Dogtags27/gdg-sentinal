@@ -116,9 +116,9 @@ def _fallback_gate(s: TicketState) -> None:
 
 _gate_lock = threading.Lock()  # the burst detector keeps state across requests
 
-# Demo traffic gets its own gate and burst window, so pressing "Simulate outage" in the console (ticket IDs
-# SIM-...) or the deploy warm-up (WARMUP-...) can show a burst without tripping one for real tickets.
-DEMO_TICKET_PREFIXES = ("SIM-", "WARMUP-")
+# Demo traffic gets its own gate and burst window, so the console's outage drill (SIM-...), a manager's
+# Live triage test (TEST-...) or the deploy warm-up (WARMUP-...) never trips a burst for real tickets.
+DEMO_TICKET_PREFIXES = ("SIM-", "TEST-", "WARMUP-")
 
 
 def _burst_detector() -> OutageBurstDetector:
