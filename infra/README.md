@@ -33,3 +33,22 @@ python infra/check_access.py                                           # Redis l
 - Data survives restarts in the `redis-data` volume. To start over: `docker compose --env-file .env -f infra/docker-compose.dev.yml down -v`.
 
 The image is pinned (`redis/redis-stack:7.4.0-v8`) so every laptop and EC2 run the same Redis. On EC2, port 6379 is never opened in the security group.
+
+## Deploying to EC2 (H-08, H-15, H-19)
+
+One-time box setup (Ubuntu 22.04+, t3.large, 30 GB disk):
+
+1. Security group: allow **80** (and 443 if you add TLS) from anywhere, **22** from your IP only. Never open 6379, 8000 or 8001.
+2. Install Docker: `curl -fsSL https://get.docker.com | sudo sh && sudo usermod -aG docker $USER`, then log out and back in.
+3. `git clone https://github.com/Dogtags27/gdg-sentinal.git && cd gdg-sentinal`, then create `.env` from `infra/env.template` with the real keys. Set `REDIS_PASSWORD` to a long random value and `MOCK_ENGINE=false`.
+4. Restore the Redis index (after the ML engineer uploads `redis/dump_v1.rdb` to R2): run `docker compose --env-file .env -f infra/docker-compose.prod.yml up -d redis`, stop it, copy the file into the `redis-data` volume as `dump.rdb`, start it again.
+
+Every deploy after that:
+
+```
+./infra/deploy.sh
+```
+
+It pulls main, rebuilds, restarts, waits for `/readyz`, and sends two warm-up tickets (`infra/warmup.py`). Check the stack at any time with `docker compose --env-file .env -f infra/docker-compose.prod.yml ps` and `curl localhost/api/v1/health`. Keep the local dev stack (`docker-compose.dev.yml`) running on one laptop as a hot spare for the demo.
+
+Images: `Dockerfile.engine` (Python), `Dockerfile.gateway` (builds the React console and the Go binary, serves both on 8080, published on port 80). The gateway image needs `backend/go.mod` and `backend/cmd/api/main.go` from the full-stack dev, and honours `WEB_DIR` for the console files.

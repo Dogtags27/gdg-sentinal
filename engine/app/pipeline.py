@@ -29,7 +29,9 @@ from typing import Any
 from pydantic import ValidationError
 
 from engine.app import stubs
+from engine.app.contract_rules import decision_for
 from engine.app.generate.fallbacks import fallback_draft
+from engine.app.generate.llm import draft_stage, validate_stage
 from engine.app.policy.gate import EscalationGate
 from engine.app.schemas import (
     CONTRACT_VERSION,
@@ -149,6 +151,16 @@ def run_gate(s: TicketState) -> None:
             for r, detail in zip(result.reasons, details)
         ],
     }
+    # The model can flag requests the evidence doesn't support even when no keyword matched.
+    if s.unsupported_requests and all(r["code"] != "UNSUPPORTED_REQUEST" for r in s.gate["reasons"]):
+        s.gate["reasons"].append(
+            {
+                "code": "UNSUPPORTED_REQUEST",
+                "severity": "P2",
+                "detail": "The draft could not support: " + "; ".join(s.unsupported_requests),
+            }
+        )
+        s.gate["decision"] = decision_for([r["severity"] for r in s.gate["reasons"]])
     c = result.burst_cluster
     s.burst = (
         None
@@ -171,8 +183,8 @@ STAGES: tuple[Stage, ...] = (
     Stage("global_search", "retrieve", stubs.global_search, _fallback_global_search, "ML engineer"),
     Stage("classify", "classify", stubs.classify, _fallback_classify, "ML engineer"),
     Stage("route_and_search", "retrieve", stubs.route_and_search, _fallback_route_and_search, "ML engineer"),
-    Stage("draft", "draft", stubs.draft, _fallback_draft, "Hriday"),
-    Stage("validate", "validate", stubs.validate, _fallback_validate, "Hriday"),
+    Stage("draft", "draft", draft_stage, _fallback_draft, "Hriday"),
+    Stage("validate", "validate", validate_stage, _fallback_validate, "Hriday"),
     Stage("gate", "gate", run_gate, _fallback_gate, "Data analyst"),
 )
 

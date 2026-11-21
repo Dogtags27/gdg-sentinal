@@ -42,6 +42,10 @@ class TicketState:
     # draft + validate stages (Hriday) -> contract "draft"
     draft: dict[str, Any] | None = None
     llm_failed: bool = False
+    # Things the model says the evidence can't support; the pipeline turns them into an
+    # UNSUPPORTED_REQUEST gate reason even when no keyword matched.
+    unsupported_requests: list[str] = field(default_factory=list)
+    insufficient_evidence: bool = False
     # gate stage (data analyst) -> contract "gate" and "burst"
     gate: dict[str, Any] | None = None
     burst: dict[str, Any] | None = None
