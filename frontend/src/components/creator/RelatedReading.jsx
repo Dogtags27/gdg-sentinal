@@ -82,24 +82,27 @@ export default function RelatedReading({ ticketId, className = '' }) {
   }, [load]);
 
   const items = state.data?.items ?? [];
-  // Nothing close enough in the knowledge base: say nothing rather than show weak matches.
-  if (!state.loading && !state.error && items.length === 0) return null;
 
+  // A side panel next to the ticket (stacks below it on phones). The first answer starts open.
   return (
     <section aria-labelledby={`related-${ticketId}`} className={className}>
       <h2 id={`related-${ticketId}`} className="flex items-center gap-2 text-[15px] font-semibold text-ink">
-        <BookOpen size={16} className="text-ink-3" aria-hidden /> Similar issues, already solved
+        <BookOpen size={16} className="text-teal-700" aria-hidden /> Similar issues, already solved
       </h2>
-      <p className="mt-0.5 mb-3 text-[13px] text-ink-3">
-        Other customers had a problem like yours. One of these answers may help while you wait.
-      </p>
+      <p className="mt-0.5 mb-3 text-[13px] text-ink-3">These answers fixed problems like yours. One may help while you wait.</p>
 
       {state.loading && (
         <div className="space-y-2" aria-live="polite">
-          <span className="sr-only">Finding similar solved issues…</span>
-          {[0, 1].map((i) => (
+          <p className="text-[12.5px] text-ink-3">Finding similar solved issues…</p>
+          {[0, 1, 2].map((i) => (
             <div key={i} className="h-[74px] animate-pulse rounded-xl border border-line bg-card" />
           ))}
+        </div>
+      )}
+
+      {!state.loading && !state.error && items.length === 0 && (
+        <div className="rounded-xl border border-dashed border-line-dark bg-card/70 px-5 py-5 text-[13px] text-ink-3">
+          Nothing similar on record yet. Our team will reply to your ticket.
         </div>
       )}
 
@@ -114,19 +117,21 @@ export default function RelatedReading({ ticketId, className = '' }) {
 
       {items.length > 0 && (
         <ul className="space-y-2">
-          {items.map((it) => (
+          {items.map((it, i) => (
             <li key={it.ref}>
-              <details className="group rounded-xl border border-line bg-card open:shadow-sentinel-md">
+              <details open={i === 0} className="group rounded-xl border border-line bg-card open:shadow-sentinel-md">
                 <summary className="flex cursor-pointer list-none items-start gap-3 px-5 py-3.5 outline-none focus-visible:ring-2 focus-visible:ring-teal-400 [&::-webkit-details-marker]:hidden">
                   <div className="min-w-0 flex-1" lang={it.language}>
                     <p className="text-[14px] font-medium text-ink">
                       <Readable text={it.subject || 'Similar issue'} />
                     </p>
-                    <p className="mt-0.5 line-clamp-2 text-[13px] text-ink-3 group-open:hidden">
+                    <div className="mt-1 empty:hidden">
+                      <LanguageNote item={it} reader={state.data.language} />
+                    </div>
+                    <p className="mt-1 line-clamp-2 text-[13px] text-ink-3 group-open:hidden">
                       <Readable text={it.answer} />
                     </p>
                   </div>
-                  <LanguageNote item={it} reader={state.data.language} />
                   <ChevronDown size={16} className="mt-0.5 shrink-0 text-ink-3 transition group-open:rotate-180" aria-hidden />
                 </summary>
                 <div className="space-y-3 border-t border-line px-5 py-4 text-[13.5px] leading-relaxed text-ink-2" lang={it.language}>

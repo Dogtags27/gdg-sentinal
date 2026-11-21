@@ -23,18 +23,32 @@ SECURITY_KEYWORDS_DE = [
 ]
 
 # 2. Prompt Injections & Jailbreak Attempts (P2)
+# Each pattern needs an instruction-like object ("previous instructions", "your rules", "system prompt"),
+# so ordinary tickets ("please ignore my previous email", "users ignore the password rules") don't match.
 PROMPT_INJECTION_PATTERNS = [
-    r"ignore\s+(all\s+)?(previous|prior|above)\s+instructions",
-    r"disregard\s+(all\s+)?(previous|prior)\s+instructions",
-    r"system\s+prompt",
-    r"you\s+are\s+now\s+(in\s+)?(dan\s+mode|unfiltered|jailbroken)",
+    # English
+    r"(ignore|disregard|forget|override|bypass)\s+(all\s+|any\s+)?(of\s+)?(the\s+|your\s+|these\s+)?"
+    r"(previous|prior|above|earlier|preceding|system|original)\s+(instructions|rules|prompts?|guidelines|directions)",
+    r"(ignore|disregard|forget|override|bypass)\s+(all|your)\s+(instructions|rules|guidelines)",
+    r"system\s*-?\s*prompt",
+    r"(reveal|print|show|output|repeat|display|leak|dump)\s+(me\s+)?(your|the\s+(hidden|internal|system|full))\s+"
+    r"(full\s+|entire\s+|internal\s+|hidden\s+)?(prompt|instructions|rules|guidelines)",
+    r"you\s+are\s+now\s+(in\s+)?(dan|developer|unfiltered|jailbroken|god|unrestricted)\b",
+    r"developer\s+mode",
+    r"jailbreak",
+    r"\bdan\s+mode\b",
+    r"act\s+as\s+(an?\s+)?(unrestricted|unfiltered|jailbroken)",
     r"new\s+rule:",
-    r"developer\s+mode\s+enabled",
     r"output\s+your\s+instructions",
     r"repeat\s+the\s+prompt\s+above",
-    r"ignoriere\s+(alle\s+)?vorherigen\s+anweisungen",
-    r"vergiss\s+alle\s+regeln",
-    r"zeige\s+(den\s+)?system\s+prompt"
+    # German
+    r"(ignoriere|ignorier|vergiss|missachte|übergehe|umgehe)\s+(bitte\s+)?(alle\s+|sämtliche\s+|die\s+|deine\s+)?"
+    r"(vorherigen|bisherigen|obigen|früheren|vorigen|ursprünglichen)\s+(anweisungen|regeln|instruktionen|vorgaben|befehle)",
+    r"(ignoriere|ignorier|vergiss|missachte)\s+(alle|deine|sämtliche)\s+(anweisungen|regeln|instruktionen|vorgaben)",
+    r"(zeige|gib|nenne|verrate|wiederhole)\s+(mir\s+)?(deine|die\s+internen|den\s+system|die\s+geheimen)\s*-?\s*"
+    r"(prompt|regeln|anweisungen|instruktionen|vorgaben)",
+    r"systemprompt|system-prompt",
+    r"entwicklermodus",
 ]
 
 # 3. Unsupported Requests & Guarantees (P2)

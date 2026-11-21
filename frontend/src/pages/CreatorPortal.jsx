@@ -9,7 +9,6 @@ import {
   CreditCard,
   Inbox,
   KeyRound,
-  Languages,
   Laptop,
   Loader2,
   Lock,
@@ -77,7 +76,7 @@ const TOPICS = [
 ];
 
 const STEPS = [
-  { icon: Send, title: 'You submit', body: 'Describe the issue in English or German.' },
+  { icon: Send, title: 'You submit', body: 'Describe the issue in your own words.' },
   { icon: Zap, title: 'Sorted in seconds', body: 'Routed to the right team by urgency.' },
   { icon: UserCheck, title: 'People stay in charge', body: 'A specialist checks before anything is sent.' },
   { icon: MessageSquareText, title: 'You get a reply', body: 'Grounded in past fixes, in your language.' },
@@ -155,6 +154,13 @@ export default function CreatorPortal({ ticketId }) {
     const id = setInterval(() => !document.hidden && refresh(), 10_000);
     return () => clearInterval(id);
   }, [refresh, ticketId]);
+
+  // Tickets the store no longer has (expired after 7 days, or sent before tracking began).
+  const removeMissing = () => {
+    const next = readMine().filter((t) => t.status !== 'missing');
+    writeMine(next);
+    setMine(next);
+  };
 
   const manualRefresh = async () => {
     setRefreshing(true);
@@ -241,7 +247,7 @@ export default function CreatorPortal({ ticketId }) {
         </header>
 
         {ticketId ? (
-          <div className="mx-auto max-w-3xl px-4 pt-6 sm:px-6">
+          <div className="mx-auto max-w-6xl px-4 pt-6 sm:px-6">
             <a
               href="#/help"
               className="inline-flex items-center gap-1.5 rounded-md text-[13px] font-medium text-slate-300 outline-none hover:text-white focus-visible:ring-2 focus-visible:ring-teal-300"
@@ -272,9 +278,6 @@ export default function CreatorPortal({ ticketId }) {
               style={{ animationDelay: '180ms' }}
             >
               <li className="flex items-center gap-1.5">
-                <Languages size={14} className="text-teal-300" aria-hidden /> English or German
-              </li>
-              <li className="flex items-center gap-1.5">
                 <Lock size={14} className="text-teal-300" aria-hidden /> Personal data masked
               </li>
               <li className="flex items-center gap-1.5">
@@ -285,131 +288,133 @@ export default function CreatorPortal({ ticketId }) {
         )}
       </div>
 
-      <main className={`relative mx-auto max-w-3xl space-y-10 px-4 pb-16 sm:px-6 ${ticketId ? '-mt-16' : '-mt-20 sm:-mt-24'}`}>
+      <main
+        className={`relative mx-auto space-y-10 px-4 pb-16 sm:px-6 ${ticketId || done ? 'max-w-6xl' : 'max-w-3xl'} ${ticketId ? '-mt-16' : '-mt-20 sm:-mt-24'}`}
+      >
         {ticketId ? (
           <CreatorTicket id={ticketId} />
         ) : (
           <>
-            {/* Form / success card */}
-            <section className="help-card help-rise rounded-2xl p-5 sm:p-8" style={{ animationDelay: '220ms' }}>
-              {done ? (
-                <div className="lab-in py-6 text-center">
-                  <div className="help-success-ring mx-auto grid h-16 w-16 place-items-center rounded-full bg-emerald-50 text-emerald-600 ring-8 ring-emerald-50/60">
-                    <CheckCircle2 size={34} aria-hidden />
-                  </div>
-                  <h2 className="mt-5 text-[22px] font-semibold tracking-tight text-ink">Ticket submitted</h2>
-                  <p className="mx-auto mt-1.5 max-w-sm text-[14px] text-ink-2">
-                    Our support team is on it. Keep this ID for reference and follow progress below.
-                  </p>
-                  <button
-                    onClick={copyId}
-                    title="Copy ticket ID"
-                    className="mx-auto mt-5 flex items-center gap-2 rounded-lg border border-line bg-page px-3.5 py-2 font-mono text-[13.5px] text-ink-2 transition hover:border-teal-400 hover:bg-teal-50/50"
-                  >
-                    {done.ticket_id} <Copy size={13} aria-hidden /> <span className="sr-only">Copy</span>
-                    {copied && <span className="font-sans text-[12px] text-emerald-700">Copied</span>}
-                  </button>
-                  <div className="mt-6 flex justify-center">
-                    <StatusPill status={done.status} />
-                  </div>
-                  <div className="mt-7 flex flex-wrap items-center justify-center gap-3">
-                    <a
-                      href={myTicketHref(done.ticket_id)}
-                      className="inline-flex h-10 items-center gap-2 rounded-lg border border-line-dark bg-card px-4 text-[13.5px] font-semibold text-ink-2 transition hover:border-teal-400 focus-visible:ring-2 focus-visible:ring-teal-400 focus-visible:outline-none"
-                    >
-                      View ticket
-                    </a>
-                    <button
-                      onClick={() => setDone(null)}
-                      className="inline-flex h-10 items-center gap-2 rounded-lg bg-brand-950 px-4 text-[13.5px] font-semibold text-white transition hover:bg-brand-800 focus-visible:ring-2 focus-visible:ring-teal-400 focus-visible:outline-none"
-                    >
-                      <Send size={15} aria-hidden /> Submit another ticket
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <form onSubmit={submit} className="space-y-5">
-                  <div>
-                    <p className="text-[12px] font-semibold tracking-wide text-teal-700 uppercase">New ticket</p>
-                    <h2 className="mt-1 text-[20px] font-semibold tracking-tight text-ink">What do you need help with?</h2>
-                  </div>
-
-                  <div role="group" aria-label="Common topics" className="flex flex-wrap gap-2">
-                    {TOPICS.map((t) => {
-                      const Icon = t.icon;
-                      return (
-                        <button
-                          key={t.id}
-                          type="button"
-                          aria-pressed={topic === t.id}
-                          onClick={() => pickTopic(t)}
-                          className="help-chip flex items-center gap-1.5 rounded-full border border-line-dark bg-card px-3 py-1.5 text-[12.5px] font-medium text-ink-2 hover:border-teal-400 focus-visible:ring-2 focus-visible:ring-teal-400 focus-visible:outline-none"
-                        >
-                          <Icon size={14} className={topic === t.id ? 'text-teal-600' : 'text-ink-3'} aria-hidden />
-                          {t.label}
-                        </button>
-                      );
-                    })}
-                  </div>
-
-                  <label className="block">
-                    <span className="text-[13px] font-medium text-ink-2">
-                      Subject <span className="font-normal text-ink-3">(optional)</span>
-                    </span>
-                    <input
-                      value={subject}
-                      onChange={(e) => setSubject(e.target.value)}
-                      maxLength={500}
-                      placeholder="e.g. VPN not connecting"
-                      className="mt-1.5 h-11 w-full rounded-lg border border-line-dark bg-card px-3.5 text-[14px] outline-none transition focus:border-teal-500 focus:ring-3 focus:ring-teal-500/15"
-                    />
-                  </label>
-                  <label className="block">
-                    <span className="flex items-baseline justify-between text-[13px] font-medium text-ink-2">
-                      Describe the problem
-                      <span className={`text-[11.5px] font-normal tabular ${nearLimit ? 'text-rose-600' : 'text-ink-3'}`}>
-                        {body.length.toLocaleString()} / {MAX_BODY.toLocaleString()}
-                      </span>
-                    </span>
-                    <textarea
-                      id="help-body"
-                      value={body}
-                      onChange={(e) => setBody(e.target.value)}
-                      required
-                      maxLength={MAX_BODY}
-                      rows={6}
-                      placeholder={activeTopic?.hint ?? 'What happened, and since when?'}
-                      className="mt-1.5 w-full resize-y rounded-lg border border-line-dark bg-card px-3.5 py-3 text-[14px] leading-relaxed outline-none transition focus:border-teal-500 focus:ring-3 focus:ring-teal-500/15"
-                    />
-                  </label>
-                  {error && (
-                    <p role="alert" className="rounded-lg bg-rose-50 px-3 py-2 text-[13px] text-rose-800">
-                      {error}
+            {/* Form, or the success card with readings that may solve it on the right */}
+            <div className={done ? 'grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_400px]' : ''}>
+              <section className="help-card help-rise rounded-2xl p-5 sm:p-8" style={{ animationDelay: '220ms' }}>
+                {done ? (
+                  <div className="lab-in py-6 text-center">
+                    <div className="help-success-ring mx-auto grid h-16 w-16 place-items-center rounded-full bg-emerald-50 text-emerald-600 ring-8 ring-emerald-50/60">
+                      <CheckCircle2 size={34} aria-hidden />
+                    </div>
+                    <h2 className="mt-5 text-[22px] font-semibold tracking-tight text-ink">Ticket submitted</h2>
+                    <p className="mx-auto mt-1.5 max-w-sm text-[14px] text-ink-2">
+                      Our support team is on it. Keep this ID for reference and follow progress below.
                     </p>
-                  )}
-                  <div className="flex flex-col-reverse gap-3 border-t border-line pt-5 sm:flex-row sm:items-center">
-                    <span
-                      className="flex items-center gap-1.5 text-[12px] text-ink-3"
-                      title="Emails, phone numbers and account numbers are masked before any AI reads your ticket."
-                    >
-                      <Lock size={13} className="text-teal-600" aria-hidden />
-                      Personal data is masked automatically.
-                    </span>
                     <button
-                      type="submit"
-                      disabled={!body.trim() || sending}
-                      className="flex h-11 items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-brand-950 to-brand-800 px-6 text-[14px] font-semibold text-white shadow-[0_10px_24px_-12px_rgb(8_26_40/0.8)] transition hover:to-brand-700 focus-visible:ring-2 focus-visible:ring-teal-400 focus-visible:outline-none disabled:opacity-50 disabled:shadow-none sm:ml-auto"
+                      onClick={copyId}
+                      title="Copy ticket ID"
+                      className="mx-auto mt-5 flex items-center gap-2 rounded-lg border border-line bg-page px-3.5 py-2 font-mono text-[13.5px] text-ink-2 transition hover:border-teal-400 hover:bg-teal-50/50"
                     >
-                      {sending ? <Loader2 size={16} className="animate-spin" aria-hidden /> : <Send size={16} aria-hidden />}
-                      {sending ? 'Sending' : 'Submit ticket'}
+                      {done.ticket_id} <Copy size={13} aria-hidden /> <span className="sr-only">Copy</span>
+                      {copied && <span className="font-sans text-[12px] text-emerald-700">Copied</span>}
                     </button>
+                    <div className="mt-6 flex justify-center">
+                      <StatusPill status={done.status} />
+                    </div>
+                    <div className="mt-7 flex flex-wrap items-center justify-center gap-3">
+                      <a
+                        href={myTicketHref(done.ticket_id)}
+                        className="inline-flex h-10 items-center gap-2 rounded-lg border border-line-dark bg-card px-4 text-[13.5px] font-semibold text-ink-2 transition hover:border-teal-400 focus-visible:ring-2 focus-visible:ring-teal-400 focus-visible:outline-none"
+                      >
+                        View ticket
+                      </a>
+                      <button
+                        onClick={() => setDone(null)}
+                        className="inline-flex h-10 items-center gap-2 rounded-lg bg-brand-950 px-4 text-[13.5px] font-semibold text-white transition hover:bg-brand-800 focus-visible:ring-2 focus-visible:ring-teal-400 focus-visible:outline-none"
+                      >
+                        <Send size={15} aria-hidden /> Submit another ticket
+                      </button>
+                    </div>
                   </div>
-                </form>
-              )}
-            </section>
+                ) : (
+                  <form onSubmit={submit} className="space-y-5">
+                    <div>
+                      <p className="text-[12px] font-semibold tracking-wide text-teal-700 uppercase">New ticket</p>
+                      <h2 className="mt-1 text-[20px] font-semibold tracking-tight text-ink">What do you need help with?</h2>
+                    </div>
 
-            {/* Readings that may solve it before anyone replies */}
-            {done && <RelatedReading ticketId={done.ticket_id} />}
+                    <div role="group" aria-label="Common topics" className="flex flex-wrap gap-2">
+                      {TOPICS.map((t) => {
+                        const Icon = t.icon;
+                        return (
+                          <button
+                            key={t.id}
+                            type="button"
+                            aria-pressed={topic === t.id}
+                            onClick={() => pickTopic(t)}
+                            className="help-chip flex items-center gap-1.5 rounded-full border border-line-dark bg-card px-3 py-1.5 text-[12.5px] font-medium text-ink-2 hover:border-teal-400 focus-visible:ring-2 focus-visible:ring-teal-400 focus-visible:outline-none"
+                          >
+                            <Icon size={14} className={topic === t.id ? 'text-teal-600' : 'text-ink-3'} aria-hidden />
+                            {t.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    <label className="block">
+                      <span className="text-[13px] font-medium text-ink-2">
+                        Subject <span className="font-normal text-ink-3">(optional)</span>
+                      </span>
+                      <input
+                        value={subject}
+                        onChange={(e) => setSubject(e.target.value)}
+                        maxLength={500}
+                        placeholder="e.g. VPN not connecting"
+                        className="mt-1.5 h-11 w-full rounded-lg border border-line-dark bg-card px-3.5 text-[14px] outline-none transition focus:border-teal-500 focus:ring-3 focus:ring-teal-500/15"
+                      />
+                    </label>
+                    <label className="block">
+                      <span className="flex items-baseline justify-between text-[13px] font-medium text-ink-2">
+                        Describe the problem
+                        <span className={`text-[11.5px] font-normal tabular ${nearLimit ? 'text-rose-600' : 'text-ink-3'}`}>
+                          {body.length.toLocaleString()} / {MAX_BODY.toLocaleString()}
+                        </span>
+                      </span>
+                      <textarea
+                        id="help-body"
+                        value={body}
+                        onChange={(e) => setBody(e.target.value)}
+                        required
+                        maxLength={MAX_BODY}
+                        rows={6}
+                        placeholder={activeTopic?.hint ?? 'What happened, and since when?'}
+                        className="mt-1.5 w-full resize-y rounded-lg border border-line-dark bg-card px-3.5 py-3 text-[14px] leading-relaxed outline-none transition focus:border-teal-500 focus:ring-3 focus:ring-teal-500/15"
+                      />
+                    </label>
+                    {error && (
+                      <p role="alert" className="rounded-lg bg-rose-50 px-3 py-2 text-[13px] text-rose-800">
+                        {error}
+                      </p>
+                    )}
+                    <div className="flex flex-col-reverse gap-3 border-t border-line pt-5 sm:flex-row sm:items-center">
+                      <span
+                        className="flex items-center gap-1.5 text-[12px] text-ink-3"
+                        title="Emails, phone numbers and account numbers are masked before any AI reads your ticket."
+                      >
+                        <Lock size={13} className="text-teal-600" aria-hidden />
+                        Personal data is masked automatically.
+                      </span>
+                      <button
+                        type="submit"
+                        disabled={!body.trim() || sending}
+                        className="flex h-11 items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-brand-950 to-brand-800 px-6 text-[14px] font-semibold text-white shadow-[0_10px_24px_-12px_rgb(8_26_40/0.8)] transition hover:to-brand-700 focus-visible:ring-2 focus-visible:ring-teal-400 focus-visible:outline-none disabled:opacity-50 disabled:shadow-none sm:ml-auto"
+                      >
+                        {sending ? <Loader2 size={16} className="animate-spin" aria-hidden /> : <Send size={16} aria-hidden />}
+                        {sending ? 'Sending' : 'Submit ticket'}
+                      </button>
+                    </div>
+                  </form>
+                )}
+              </section>
+              {done && <RelatedReading ticketId={done.ticket_id} className="lg:sticky lg:top-6" />}
+            </div>
 
             {/* What happens next */}
             <section aria-labelledby="next-title">
@@ -445,14 +450,26 @@ export default function CreatorPortal({ ticketId }) {
                   <span className="rounded-full bg-brand-100 px-2 py-0.5 text-[11.5px] font-semibold text-brand-700">{openCount} open</span>
                 )}
                 {mine.length > 0 && (
-                  <button
-                    type="button"
-                    onClick={manualRefresh}
-                    title="Refresh status"
-                    className="ml-auto flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-[12.5px] font-medium text-ink-3 transition hover:bg-card hover:text-ink focus-visible:ring-2 focus-visible:ring-teal-400 focus-visible:outline-none"
-                  >
-                    <RefreshCw size={13} className={refreshing ? 'animate-spin' : ''} aria-hidden /> Refresh
-                  </button>
+                  <div className="ml-auto flex items-center gap-1">
+                    {mine.some((t) => t.status === 'missing') && (
+                      <button
+                        type="button"
+                        onClick={removeMissing}
+                        title={STATUS.missing.tip}
+                        className="rounded-lg px-2.5 py-1 text-[12.5px] font-medium text-ink-3 transition hover:bg-card hover:text-ink focus-visible:ring-2 focus-visible:ring-teal-400 focus-visible:outline-none"
+                      >
+                        Remove expired
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={manualRefresh}
+                      title="Refresh status"
+                      className="flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-[12.5px] font-medium text-ink-3 transition hover:bg-card hover:text-ink focus-visible:ring-2 focus-visible:ring-teal-400 focus-visible:outline-none"
+                    >
+                      <RefreshCw size={13} className={refreshing ? 'animate-spin' : ''} aria-hidden /> Refresh
+                    </button>
+                  </div>
                 )}
               </div>
               {mine.length === 0 ? (

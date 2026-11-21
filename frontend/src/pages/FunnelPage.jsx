@@ -39,7 +39,11 @@ const STAGES = [
     test: (t) => ['en', 'de'].includes(t.language.code) && !has(t, 'ENGINE_DEGRADED') && !has(t, 'UNSUPPORTED_LANGUAGE'),
   },
   { label: 'Matched a past case', tip: 'A past ticket was similar enough to ground a reply.', test: (t) => !has(t, 'NO_PRECEDENT') },
-  { label: 'Cleared for auto-draft', tip: 'No safety check fired: a grounded reply is ready to send.', test: (t) => t.gate.decision === 'AUTO_DRAFT' },
+  {
+    label: 'Cleared for auto-draft',
+    tip: 'No safety check fired: a grounded reply is ready to send.',
+    test: (t) => t.gate.decision === 'AUTO_DRAFT',
+  },
 ];
 
 const pct = (n, d) => (d ? Math.round((n / d) * 100) : 0);
@@ -81,35 +85,38 @@ function Funnel({ tickets }) {
   const worst = rows.slice(1).reduce((a, r) => (r.drop > (a?.drop ?? 0) ? r : a), null);
   return (
     <>
-    <ol className="space-y-3.5">
-      {rows.map((r, i) => (
-        <li key={r.label} className="group/tip relative">
-          <div className="flex items-baseline gap-2 text-[13px]">
-            <Tip text={r.tip}>
-              <span tabIndex={0} className="cursor-help font-medium text-ink outline-none focus-visible:underline">{r.label}</span>
-            </Tip>
-            <span className="ml-auto tabular font-semibold text-ink">{r.n}</span>
-            <span className="tabular w-10 text-right text-ink-3">{pct(r.n, total)}%</span>
-            <span className="tabular w-10 text-right text-[12px] text-ink-3">{i ? (r.drop ? `−${r.drop}` : '±0') : ''}</span>
-          </div>
-          <div className="mt-1.5 h-3.5">
-            <div
-              className="h-full rounded-[4px] transition-[width] duration-500"
-              style={{ width: r.n ? `max(4px, ${(r.n / total) * 100}%)` : 0, background: RAMP[i] }}
-              aria-hidden
-            />
-          </div>
-        </li>
-      ))}
-    </ol>
-    <p className="mt-6 border-t border-line pt-4 text-[13px] leading-relaxed text-ink-2">
-      <span className="font-semibold text-ink">{pct(rows[3].n, total)}%</span> of these tickets got a reply ready without a person.
-      {worst && (
-        <>
-          {' '}The biggest drop is at <span className="font-medium text-ink">{worst.label.toLowerCase()}</span> ({worst.drop} ticket{worst.drop > 1 ? 's' : ''}).
-        </>
-      )}
-    </p>
+      <ol className="space-y-3.5">
+        {rows.map((r, i) => (
+          <li key={r.label} className="group/tip relative">
+            <div className="flex items-baseline gap-2 text-[13px]">
+              <Tip text={i && r.drop ? `${r.tip} ${r.drop} ticket${r.drop > 1 ? 's' : ''} stopped at this step.` : r.tip}>
+                <span tabIndex={0} className="cursor-help font-medium text-ink outline-none focus-visible:underline">
+                  {r.label}
+                </span>
+              </Tip>
+              <span className="ml-auto tabular font-semibold text-ink">{r.n}</span>
+              <span className="tabular w-10 text-right text-ink-3">{pct(r.n, total)}%</span>
+            </div>
+            <div className="mt-1.5 h-3.5">
+              <div
+                className="h-full rounded-[4px] transition-[width] duration-500"
+                style={{ width: r.n ? `max(4px, ${(r.n / total) * 100}%)` : 0, background: RAMP[i] }}
+                aria-hidden
+              />
+            </div>
+          </li>
+        ))}
+      </ol>
+      <p className="mt-6 border-t border-line pt-4 text-[13px] leading-relaxed text-ink-2">
+        <span className="font-semibold text-ink">{pct(rows[3].n, total)}%</span> of these tickets got a reply ready without a person.
+        {worst && (
+          <>
+            {' '}
+            The biggest drop is at <span className="font-medium text-ink">{worst.label.toLowerCase()}</span> ({worst.drop} ticket
+            {worst.drop > 1 ? 's' : ''}).
+          </>
+        )}
+      </p>
     </>
   );
 }
@@ -121,14 +128,19 @@ function Waterfall({ tickets }) {
   const rev = c.get('HUMAN_REVIEW') ?? 0;
   const auto = c.get('AUTO_DRAFT') ?? 0;
   const cols = [
-    { label: 'Received', value: N, lo: 0, hi: N, bar: 'bg-brand-700', sign: '' },
-    { ...DECISION_STYLE.ESCALATE_ONCALL, value: esc, lo: N - esc, hi: N, sign: '−' },
-    { ...DECISION_STYLE.HUMAN_REVIEW, value: rev, lo: auto, hi: auto + rev, sign: '−' },
-    { ...DECISION_STYLE.AUTO_DRAFT, value: auto, lo: 0, hi: auto, sign: '' },
+    { label: 'Received', value: N, lo: 0, hi: N, bar: 'bg-brand-700' },
+    { ...DECISION_STYLE.ESCALATE_ONCALL, value: esc, lo: N - esc, hi: N },
+    { ...DECISION_STYLE.HUMAN_REVIEW, value: rev, lo: auto, hi: auto + rev },
+    { ...DECISION_STYLE.AUTO_DRAFT, value: auto, lo: 0, hi: auto },
   ];
   const H = 168;
   const left = tickets.filter((t) => t.gate.decision !== 'AUTO_DRAFT');
-  const reasons = [...countBy(left.flatMap((t) => [...new Set(t.gate.reasons.map((r) => r.code))]), (x) => x)]
+  const reasons = [
+    ...countBy(
+      left.flatMap((t) => [...new Set(t.gate.reasons.map((r) => r.code))]),
+      (x) => x,
+    ),
+  ]
     .sort((a, b) => b[1] - a[1])
     .slice(0, 6);
   const maxR = reasons[0]?.[1] ?? 1;
@@ -140,8 +152,10 @@ function Waterfall({ tickets }) {
           const body = (
             <>
               <div className="relative w-full" style={{ height: H }}>
-                <span className="tabular absolute inset-x-0 text-center text-[13px] font-semibold text-ink" style={{ bottom: (N ? col.hi / N : 0) * H + 4 }}>
-                  {col.sign}
+                <span
+                  className="tabular absolute inset-x-0 text-center text-[13px] font-semibold text-ink"
+                  style={{ bottom: (N ? col.hi / N : 0) * H + 4 }}
+                >
                   {col.value}
                 </span>
                 <div
@@ -156,7 +170,11 @@ function Waterfall({ tickets }) {
           return (
             <Tip key={col.label} text={tip} className="flex h-full flex-1 items-end">
               {col.href ? (
-                <a href={col.href} aria-label={`${tip}. Open the list`} className="block w-full rounded-md outline-none hover:bg-page focus-visible:ring-2 focus-visible:ring-teal-400">
+                <a
+                  href={col.href}
+                  aria-label={`${tip}. Open the list`}
+                  className="block w-full rounded-md outline-none hover:bg-page focus-visible:ring-2 focus-visible:ring-teal-400"
+                >
                   {body}
                 </a>
               ) : (
@@ -183,7 +201,9 @@ function Waterfall({ tickets }) {
           {reasons.map(([code, n]) => (
             <li key={code} className="grid grid-cols-[minmax(0,10rem)_1fr_auto] items-center gap-3 text-[12.5px]">
               <Tip text={REASONS[code]?.hint ?? code}>
-                <span tabIndex={0} className="block cursor-help truncate text-ink-2 outline-none">{REASONS[code]?.label ?? code}</span>
+                <span tabIndex={0} className="block cursor-help truncate text-ink-2 outline-none">
+                  {REASONS[code]?.label ?? code}
+                </span>
               </Tip>
               <span className="h-2.5">
                 <span className="block h-full rounded-[4px]" style={{ width: `${(n / maxR) * 100}%`, background: BAR_HUE }} aria-hidden />
@@ -201,7 +221,9 @@ function Mix({ c, total }) {
   return (
     <div className="flex h-2.5 w-[120px] gap-[2px]" aria-hidden>
       {ORDER.map((d) =>
-        c[d] ? <span key={d} className={`h-full rounded-[3px] ${DECISION_STYLE[d].bar}`} style={{ width: `${(c[d] / total) * 100}%` }} /> : null,
+        c[d] ? (
+          <span key={d} className={`h-full rounded-[3px] ${DECISION_STYLE[d].bar}`} style={{ width: `${(c[d] / total) * 100}%` }} />
+        ) : null,
       )}
     </div>
   );
@@ -221,7 +243,14 @@ function PivotTable({ tickets, pivot, chip, onChip }) {
     return [...groups.values()].sort((a, b) => b.n - a.n || String(a.key).localeCompare(String(b.key)));
   }, [tickets, pivot]);
   const total = rows.reduce(
-    (s, r) => ({ ...s, n: s.n + r.n, ESCALATE_ONCALL: s.ESCALATE_ONCALL + r.ESCALATE_ONCALL, HUMAN_REVIEW: s.HUMAN_REVIEW + r.HUMAN_REVIEW, AUTO_DRAFT: s.AUTO_DRAFT + r.AUTO_DRAFT, resolved: s.resolved + r.resolved }),
+    (s, r) => ({
+      ...s,
+      n: s.n + r.n,
+      ESCALATE_ONCALL: s.ESCALATE_ONCALL + r.ESCALATE_ONCALL,
+      HUMAN_REVIEW: s.HUMAN_REVIEW + r.HUMAN_REVIEW,
+      AUTO_DRAFT: s.AUTO_DRAFT + r.AUTO_DRAFT,
+      resolved: s.resolved + r.resolved,
+    }),
     { key: 'Total', n: 0, ESCALATE_ONCALL: 0, HUMAN_REVIEW: 0, AUTO_DRAFT: 0, resolved: 0 },
   );
   const cells = (r) => [r.n, r.ESCALATE_ONCALL, r.HUMAN_REVIEW, r.AUTO_DRAFT, `${pct(r.AUTO_DRAFT, r.n)}%`, r.resolved];
@@ -233,7 +262,9 @@ function PivotTable({ tickets, pivot, chip, onChip }) {
           <tr className="border-b border-line text-[12px] text-ink-3">
             <th className="py-2 pr-3 text-left font-medium">{pivot.label}</th>
             {['Tickets', 'Escalated', 'Human review', 'Auto-drafted', 'Auto-draft rate', 'Resolved'].map((h) => (
-              <th key={h} className={th}>{h}</th>
+              <th key={h} className={th}>
+                {h}
+              </th>
             ))}
             <th className="py-2 pl-3 text-left font-medium">Decision mix</th>
           </tr>
@@ -242,12 +273,20 @@ function PivotTable({ tickets, pivot, chip, onChip }) {
           {rows.map((r) => {
             const on = chip === r.key;
             return (
-              <tr key={r.key} onClick={() => onChip(on ? 'all' : r.key)} className={`cursor-pointer border-b border-line transition ${on ? 'bg-brand-50' : 'hover:bg-page'}`}>
+              <tr
+                key={r.key}
+                onClick={() => onChip(on ? 'all' : r.key)}
+                className={`cursor-pointer border-b border-line transition ${on ? 'bg-brand-50' : 'hover:bg-page'}`}
+              >
                 <td className="py-2 pr-3">
-                  <button type="button" aria-pressed={on} className="text-left font-medium text-ink outline-none focus-visible:underline">{r.key}</button>
+                  <button type="button" aria-pressed={on} className="text-left font-medium text-ink outline-none focus-visible:underline">
+                    {r.key}
+                  </button>
                 </td>
                 {cells(r).map((v, i) => (
-                  <td key={i} className="tabular px-3 py-2 text-right text-ink-2">{v}</td>
+                  <td key={i} className="tabular px-3 py-2 text-right text-ink-2">
+                    {v}
+                  </td>
                 ))}
                 <td className="py-2 pl-3">
                   <Tip end text={ORDER.map((d) => `${DECISION_STYLE[d].label} ${r[d]}`).join(' · ')}>
@@ -260,9 +299,13 @@ function PivotTable({ tickets, pivot, chip, onChip }) {
           <tr className="font-semibold text-ink">
             <td className="py-2 pr-3">Total</td>
             {cells(total).map((v, i) => (
-              <td key={i} className="tabular px-3 py-2 text-right">{v}</td>
+              <td key={i} className="tabular px-3 py-2 text-right">
+                {v}
+              </td>
             ))}
-            <td className="py-2 pl-3"><Mix c={total} total={total.n || 1} /></td>
+            <td className="py-2 pl-3">
+              <Mix c={total} total={total.n || 1} />
+            </td>
           </tr>
         </tbody>
       </table>
@@ -270,7 +313,8 @@ function PivotTable({ tickets, pivot, chip, onChip }) {
   );
 }
 
-const selectCls = 'h-8 rounded-md border border-line-dark bg-card px-2 text-[13px] text-ink outline-none focus-visible:ring-2 focus-visible:ring-teal-400';
+const selectCls =
+  'h-8 rounded-md border border-line-dark bg-card px-2 text-[13px] text-ink outline-none focus-visible:ring-2 focus-visible:ring-teal-400';
 
 export default function FunnelPage() {
   const { tickets } = useTickets();
@@ -297,13 +341,28 @@ export default function FunnelPage() {
         <label className="flex items-center gap-2 text-[12.5px] text-ink-3">
           Source
           <select value={sourceId} onChange={(e) => setSourceId(e.target.value)} className={selectCls}>
-            {SOURCES.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
+            {SOURCES.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.label}
+              </option>
+            ))}
           </select>
         </label>
         <label className="flex items-center gap-2 text-[12.5px] text-ink-3">
           Pivot by
-          <select value={pivotId} onChange={(e) => { setPivotId(e.target.value); setChip('all'); }} className={selectCls}>
-            {PIVOTS.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
+          <select
+            value={pivotId}
+            onChange={(e) => {
+              setPivotId(e.target.value);
+              setChip('all');
+            }}
+            className={selectCls}
+          >
+            {PIVOTS.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.label}
+              </option>
+            ))}
           </select>
         </label>
         <div className="flex flex-wrap items-center gap-1.5" aria-label={`Filter by ${pivot.label}`}>
@@ -321,7 +380,10 @@ export default function FunnelPage() {
       {scoped.length === 0 ? (
         <div className="mt-5 rounded-2xl border border-dashed border-line-dark bg-card/70 px-6 py-10 text-center text-[13.5px] text-ink-3">
           No tickets here yet. Paste one in{' '}
-          <a href="#/lab" className="font-medium text-brand-600 hover:underline">Live triage</a> to watch it flow through.
+          <a href="#/lab" className="font-medium text-brand-600 hover:underline">
+            Live triage
+          </a>{' '}
+          to watch it flow through.
         </div>
       ) : (
         <div className="mt-5 space-y-5">
@@ -329,7 +391,10 @@ export default function FunnelPage() {
             <Card title="Triage funnel" sub={`Each stage keeps only the tickets that passed the one before. ${scopeNote}.`}>
               <Funnel tickets={focus} />
             </Card>
-            <Card title="Decision waterfall" sub={`Where the gate sent them. Click a bar to open that list. ${scopeNote}.`}>
+            <Card
+              title="Decision waterfall"
+              sub={`How the received tickets split across the gate's three outcomes. Click a bar to open that list. ${scopeNote}.`}
+            >
               <Waterfall tickets={focus} />
             </Card>
           </div>

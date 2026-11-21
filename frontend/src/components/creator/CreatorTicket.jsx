@@ -79,7 +79,7 @@ export default function CreatorTicket({ id }) {
 
   if (missing) {
     return (
-      <div className="space-y-4">
+      <div className="mx-auto max-w-3xl">
         <section className="help-card rounded-2xl p-8 text-center">
           <SearchX size={28} className="mx-auto text-ink-3" aria-hidden />
           <h1 className="mt-3 text-[18px] font-semibold text-ink">We can't find this ticket</h1>
@@ -97,7 +97,7 @@ export default function CreatorTicket({ id }) {
 
   if (!view) {
     return (
-      <div className="space-y-4">
+      <div className="mx-auto max-w-3xl">
         <div className="flex items-center gap-2 help-card rounded-2xl p-8 text-[13.5px] text-ink-3">
           <Loader2 size={16} className="animate-spin" aria-hidden /> Loading your ticket…
         </div>
@@ -107,7 +107,8 @@ export default function CreatorTicket({ id }) {
 
   const resolved = view.status === 'resolved';
   return (
-    <div className="space-y-6">
+    // Open ticket: the ticket on the left, readings that may solve it on the right (stacked on phones).
+    <div className={resolved ? 'mx-auto max-w-3xl' : 'grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_400px]'}>
       <section className="help-card rounded-2xl p-6 sm:p-8">
         <div className="flex flex-wrap items-center gap-3">
           <span className="font-mono text-[12.5px] text-ink-3">{view.ticket_id}</span>
@@ -148,7 +149,7 @@ export default function CreatorTicket({ id }) {
         </div>
       </section>
 
-      {!resolved && <RelatedReading ticketId={view.ticket_id} />}
+      {!resolved && <RelatedReading ticketId={view.ticket_id} className="lg:sticky lg:top-6" />}
     </div>
   );
 }
