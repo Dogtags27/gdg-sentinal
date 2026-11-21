@@ -1,0 +1,59 @@
+{
+  "dataset_name": "Tobi-Bueck/customer-support-tickets (20k subset)",
+  "total_volume": 20000,
+  "languages": {
+    "counts": {
+      "en": 11923,
+      "de": 8077
+    },
+    "percentages": {
+      "en": 59.6,
+      "de": 40.4
+    }
+  },
+  "queues": {
+    "Technical Support": 5824,
+    "Product Support": 3708,
+    "Customer Service": 3152,
+    "IT Support": 2292,
+    "Billing and Payments": 2086,
+    "Returns and Exchanges": 1001,
+    "Service Outages and Maintenance": 764,
+    "Sales and Pre-Sales": 572,
+    "Human Resources": 338,
+    "General Inquiry": 263
+  },
+  "priorities": {
+    "medium": 8144,
+    "high": 7801,
+    "low": 4055
+  },
+  "types": {
+    "Incident": 7978,
+    "Request": 5763,
+    "Problem": 4184,
+    "Change": 2075
+  },
+  "critical_outages": {
+    "total_count": 3526,
+    "percentage": 17.63,
+    "by_queue": {
+      "Technical Support": 1853,
+      "Product Support": 507,
+      "IT Support": 450,
+      "Service Outages and Maintenance": 287,
+      "Customer Service": 144,
+      "Billing and Payments": 143,
+      "Returns and Exchanges": 85,
+      "General Inquiry": 23,
+      "Human Resources": 21,
+      "Sales and Pre-Sales": 13
+    }
+  },
+  "text_telemetry": {
+    "avg_subject_chars": 41.6,
+    "avg_body_chars": 394.4,
+    "avg_answer_chars": 407.7,
+    "null_subject_pct": 7.31
+  }
+}
