@@ -8,7 +8,7 @@ import { ConfidenceBar, DecisionBadge, LangBadge, PriorityBadge, ReasonChip } fr
 import { useTickets } from '../state/tickets.jsx';
 import { USE_MOCK } from '../api/client.js';
 import { PRIORITIES } from '../lib/constants.js';
-import { ms, overallConfidence, shortDate } from '../lib/format.js';
+import { ms, overallConfidence, shortDate, ticketTitle } from '../lib/format.js';
 import { ticketHref } from '../lib/useHashRoute.js';
 
 const TABS = [
@@ -23,7 +23,7 @@ const TABS = [
 const DECISION_RANK = { ESCALATE_ONCALL: 3, HUMAN_REVIEW: 2, AUTO_DRAFT: 1 };
 const COLUMNS = [
   { key: 'id', label: 'Ticket', get: (t) => t.ticket_id },
-  { key: 'subject', label: 'Subject', get: (t) => t.subject.toLowerCase() },
+  { key: 'subject', label: 'Subject', get: (t) => ticketTitle(t).toLowerCase() },
   { key: 'lang', label: 'Lang', get: (t) => t.language.code },
   { key: 'type', label: 'Type', get: (t) => t.classification.type.label },
   { key: 'priority', label: 'Priority', get: (t) => PRIORITIES[t.classification.priority.label]?.rank ?? 0 },
@@ -239,7 +239,7 @@ function Row({ t, checked, onCheck, onDetails, onReview }) {
       <td className="py-2 pl-1"><input type="checkbox" checked={checked} onChange={onCheck} aria-label={`Select ${t.ticket_id}`} className="accent-brand-600" /></td>
       <td className="py-2 pr-3 whitespace-nowrap"><a href={ticketHref(t.ticket_id)} className="text-brand-600 hover:underline">{t.ticket_id}</a></td>
       <td className="max-w-[300px] py-2 pr-3">
-        <div className="truncate" title={t.subject}>{t.subject}</div>
+        <div className={`truncate ${t.subject?.trim() ? '' : 'italic text-ink-2'}`} title={ticketTitle(t)}>{ticketTitle(t)}</div>
         {t.gate.reasons.length > 0 && (
           <div className="mt-0.5 flex gap-1">
             {shown.map((r) => <ReasonChip key={r.code} code={r.code} />)}

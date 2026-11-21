@@ -45,6 +45,17 @@ func TestMockPicksTheContractExample(t *testing.T) {
 		"degraded.en":        {"App keeps crashing", "The desktop app crashes on start."},
 		"auto_draft.en":      {"Password reset", "The reset email never arrives."},
 	}
+	for text, want := range map[string]string{
+		"Can I download this download link?": "auto_draft.en",
+		"New software downloads available":   "auto_draft.en",
+		"The app crashes on start":           "degraded.en",
+		"Unser Server ist ausgefallen":       "escalate_oncall.de",
+		"The portal is down since 8 am":      "escalate_oncall.de",
+	} {
+		if got := Example("", text); got != want {
+			t.Errorf("Example(%q) = %s, want %s", text, got, want)
+		}
+	}
 	m := NewMock()
 	m.Delay = nil
 	for want, in := range cases {
@@ -165,6 +176,7 @@ func TestClientHealth(t *testing.T) {
 	}{
 		{`{"status":"ok","components":{"vector_db":"ok"}}`, Health{"ok", "ok"}},
 		{`{"status":"degraded","stages":{"draft":"stub"},"components":{"vector_db":"unknown"}}`, Health{"stub", "unknown"}},
+		{`{"status":"down","components":{"vector_db":"down"}}`, Health{"down", "down"}},
 	} {
 		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if r.URL.Path != "/healthz" {

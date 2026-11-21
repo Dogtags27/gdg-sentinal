@@ -120,7 +120,11 @@ func (c *Client) Health(ctx context.Context) Health {
 		return down
 	}
 	h := Health{Engine: "ok", VectorDB: body.Components["vector_db"]}
-	if body.Status != "ok" {
+	switch body.Status {
+	case "ok":
+	case "down":
+		h.Engine = "down"
+	default:
 		h.Engine = "stub"
 	}
 	if h.VectorDB == "" {

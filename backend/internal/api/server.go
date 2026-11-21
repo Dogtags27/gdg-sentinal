@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net"
 	"net/http"
@@ -27,6 +28,9 @@ const (
 	maxRequestBytes = 64 << 10
 	maxSubjectRunes = 500
 	maxBodyRunes    = 10_000
+	// Placeholders can lengthen the text; the engine accepts up to these (engine/app/schemas.py).
+	maxMaskedSubjectRunes = 700
+	maxMaskedBodyRunes    = 12_000
 )
 
 var clientTicketID = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.:-]{0,63}$`)
@@ -51,6 +55,9 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/v1/health", s.health)
 	mux.HandleFunc("POST /api/v1/triage", s.triage)
 	mux.HandleFunc("GET /api/v1/insights/{name}", s.insights)
+	// NOT_FOUND and METHOD_NOT_ALLOWED are outside the contract's error codes; the console never gets them.
+	mux.HandleFunc("/api/v1/triage", methodNotAllowed("POST"))
+	mux.HandleFunc("/api/v1/health", methodNotAllowed("GET"))
 	mux.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) {
 		writeError(w, r, http.StatusNotFound, "NOT_FOUND", "No such API route. The console uses /api/v1/triage and /api/v1/health.")
 	})
@@ -69,11 +76,6 @@ func (s *Server) health(w http.ResponseWriter, r *http.Request) {
 		status = "ok"
 	}
 	components := map[string]string{"gateway": "ok", "engine": h.Engine, "vector_db": h.VectorDB}
-	if s.Engine.Mode() == "mock" {
-		// Mock mode answers every request, so the console should treat it as healthy.
-		status = "ok"
-		components["engine"], components["vector_db"] = "stub", "stub"
-	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"status": status, "mode": s.Engine.Mode(), "contract_version": contractVersion, "components": components,
 	})
@@ -111,6 +113,10 @@ func (s *Server) triage(w http.ResponseWriter, r *http.Request) {
 	if req.TicketID == "" {
 		req.TicketID = "LIVE-" + strings.ToUpper(randomHex(4))
 	}
+	if utf8.RuneCountInString(req.Subject) > maxMaskedSubjectRunes || utf8.RuneCountInString(req.Body) > maxMaskedBodyRunes {
+		writeError(w, r, http.StatusUnprocessableEntity, "VALIDATION_ERROR", "The ticket holds so many email addresses, phone numbers or other personal details that it is too long once they are masked. Shorten it and try again.")
+		return
+	}
 
 	engineStart := time.Now()
 	res, err := s.Engine.Triage(r.Context(), req)
@@ -131,22 +137,53 @@ func (s *Server) triage(w http.ResponseWriter, r *http.Request) {
 type ticketInput struct{ subject, body, ticketID string }
 
 // decodeTriage applies the request rules of contracts/README.md and returns the error to send, if any.
+// Field names match exactly (encoding/json alone would also accept "BODY"); unknown fields are ignored.
 func decodeTriage(w http.ResponseWriter, r *http.Request) (ticketInput, int, string, string) {
-	var in triageRequest
+	invalid := func(msg string) (ticketInput, int, string, string) {
+		return ticketInput{}, http.StatusUnprocessableEntity, "VALIDATION_ERROR", msg
+	}
+	var fields map[string]json.RawMessage
 	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxRequestBytes))
-	if err := dec.Decode(&in); err != nil {
+	err := dec.Decode(&fields)
+	if err == nil && dec.More() {
+		err = errors.New("trailing data after the JSON object")
+	}
+	if err != nil {
 		var tooBig *http.MaxBytesError
 		var typeErr *json.UnmarshalTypeError
 		switch {
 		case errors.As(err, &tooBig):
 			return ticketInput{}, http.StatusRequestEntityTooLarge, "PAYLOAD_TOO_LARGE", "The ticket is too large. Keep the request under 64 KB."
-		case errors.As(err, &typeErr) && typeErr.Field != "":
-			return ticketInput{}, http.StatusUnprocessableEntity, "VALIDATION_ERROR", typeErr.Field + ": must be a string."
 		case errors.As(err, &typeErr):
-			return ticketInput{}, http.StatusUnprocessableEntity, "VALIDATION_ERROR", `Send a JSON object like {"subject": "...", "body": "..."}.`
+			return invalid(`Send a JSON object like {"subject": "...", "body": "..."}.`)
 		default:
 			return ticketInput{}, http.StatusBadRequest, "INVALID_JSON", `The request is not valid JSON. Send {"subject": "...", "body": "..."}.`
 		}
+	}
+	if fields == nil {
+		return invalid(`Send a JSON object like {"subject": "...", "body": "..."}.`)
+	}
+	str := func(name string) (*string, bool) {
+		raw, ok := fields[name]
+		if !ok || string(raw) == "null" {
+			return nil, true
+		}
+		var v string
+		if json.Unmarshal(raw, &v) != nil {
+			return nil, false
+		}
+		return &v, true
+	}
+	var in triageRequest
+	var ok bool
+	if in.Subject, ok = str("subject"); !ok {
+		return invalid("subject: must be a string or null.")
+	}
+	if in.Body, ok = str("body"); !ok {
+		return invalid("body: must be a string.")
+	}
+	if in.TicketID, ok = str("ticket_id"); !ok {
+		return invalid("ticket_id: must be a string.")
 	}
 	out := ticketInput{}
 	if in.Subject != nil {
@@ -158,12 +195,7 @@ func decodeTriage(w http.ResponseWriter, r *http.Request) (ticketInput, int, str
 	if in.TicketID != nil {
 		out.ticketID = *in.TicketID
 	}
-	invalid := func(msg string) (ticketInput, int, string, string) {
-		return ticketInput{}, http.StatusUnprocessableEntity, "VALIDATION_ERROR", msg
-	}
 	switch {
-	case !utf8.ValidString(out.subject) || !utf8.ValidString(out.body):
-		return invalid("subject and body must be valid UTF-8 text.")
 	case strings.TrimSpace(out.body) == "" || utf8.RuneCountInString(out.body) > maxBodyRunes:
 		return invalid("body: must be 1 to 10,000 characters and not only whitespace.")
 	case utf8.RuneCountInString(out.subject) > maxSubjectRunes:
@@ -174,10 +206,17 @@ func decodeTriage(w http.ResponseWriter, r *http.Request) (ticketInput, int, str
 	return out, 0, "", ""
 }
 
+func methodNotAllowed(allow string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Allow", allow)
+		writeError(w, r, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "Use "+allow+" for "+r.URL.Path+".")
+	}
+}
+
 func (s *Server) engineError(w http.ResponseWriter, r *http.Request, err error) {
 	if e, ok := engine.AsError(err); ok {
 		if e.Status >= 500 {
-			s.Log.Warn("engine error", "request_id", requestID(r), "code", e.Code, "err", err)
+			s.Log.Warn("engine error", "request_id", requestID(r), "code", e.Code, "message", e.Message, "cause", fmt.Sprint(e.Err))
 		}
 		writeError(w, r, e.Status, e.Code, e.Message)
 		return
@@ -223,7 +262,14 @@ func (s *Server) static() http.Handler {
 			w.Header().Set("Cache-Control", "no-cache")
 		}
 		clean := filepath.Join(s.StaticDir, filepath.FromSlash(filepath.Clean("/"+r.URL.Path)))
-		if info, err := os.Stat(clean); err != nil || info.IsDir() && r.URL.Path != "/" {
+		info, err := os.Stat(clean)
+		if err != nil && strings.HasPrefix(r.URL.Path, "/assets/") {
+			// A stale tab asking for an old chunk must not get index.html cached for a year.
+			w.Header().Set("Cache-Control", "no-cache")
+			http.NotFound(w, r)
+			return
+		}
+		if err != nil || info.IsDir() && r.URL.Path != "/" {
 			// Unknown paths get the app shell (the console routes with #/ so this is rare).
 			http.ServeFile(w, r, index)
 			return
@@ -234,8 +280,14 @@ func (s *Server) static() http.Handler {
 
 func (s *Server) clientIP(r *http.Request) string {
 	if s.TrustProxy {
-		if fwd := r.Header.Get("X-Forwarded-For"); fwd != "" {
-			return strings.TrimSpace(strings.Split(fwd, ",")[0])
+		// Our proxy appends the address it saw, so only the last entry is trustworthy; earlier ones come
+		// from the client.
+		fwd := r.Header.Values("X-Forwarded-For")
+		if len(fwd) > 0 {
+			parts := strings.Split(fwd[len(fwd)-1], ",")
+			if ip := strings.TrimSpace(parts[len(parts)-1]); ip != "" {
+				return ip
+			}
 		}
 	}
 	host, _, err := net.SplitHostPort(r.RemoteAddr)

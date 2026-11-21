@@ -8,7 +8,7 @@ import DraftText from '../components/DraftText.jsx';
 import LatencyStrip from '../components/LatencyStrip.jsx';
 import { useTickets } from '../state/tickets.jsx';
 import { DECISIONS, GATE_THRESHOLDS, LANGUAGES, PRIORITIES, REASONS } from '../lib/constants.js';
-import { dateTime, pct, timeAgo } from '../lib/format.js';
+import { dateTime, pct, ticketTitle, timeAgo } from '../lib/format.js';
 import { go, ticketHref } from '../lib/useHashRoute.js';
 
 const DRAFT_MODE = {
@@ -102,7 +102,7 @@ export default function TicketDetail({ id }) {
       <div className="flex items-center gap-3 bg-brand-700 px-4 py-2 text-white">
         <a href="#/" className="rounded p-1 hover:bg-white/10" title="Back to dashboard"><ArrowLeft size={16} /></a>
         <h1 className="min-w-0 truncate text-[15px]">
-          Ticket <span className="text-white/60">·</span> {t.ticket_id} <span className="text-white/60">·</span> {t.subject}
+          Ticket <span className="text-white/60">·</span> {t.ticket_id} <span className="text-white/60">·</span> {ticketTitle(t)}
         </h1>
         <div className="ml-auto flex shrink-0 items-center gap-1 text-[12.5px]">
           <button disabled={idx <= 0} onClick={() => go(ticketHref(ordered[idx - 1].ticket_id))} className="rounded p-1 hover:bg-white/10 disabled:opacity-30" aria-label="Previous ticket"><ChevronLeft size={16} /></button>
@@ -170,7 +170,7 @@ export default function TicketDetail({ id }) {
                 {t.ticket_id}
                 {t.request_id && <span className="ml-2 font-mono text-[11px]" title="Request ID, for the gateway and engine logs">{t.request_id}</span>}
               </div>
-              <h2 className="mt-1 text-[17px] font-semibold">{t.subject}</h2>
+              <h2 className="mt-1 text-[17px] font-semibold">{ticketTitle(t)}</h2>
               <div className="mt-1 text-[12px] text-ink-2">
                 <b>Created</b> {dateTime(t.created_at)} <span className="mx-1 text-ink-3">·</span> <b>Triaged</b> {timeAgo(t.processed_at)}
               </div>
@@ -268,7 +268,7 @@ export default function TicketDetail({ id }) {
         <aside className="space-y-3">
           <SideCard title={<span className="flex items-center gap-1.5"><Sparkles size={14} className="text-brand-600" /> Similar tickets</span>}>
             <p className="-mt-1 mb-2 text-[11px] text-ink-3">Top precedents from the knowledge base (similarity, cosine)</p>
-            <RoutingPath route={t.retrieval.route} />
+            <RoutingPath route={t.retrieval.route} found={t.precedents.length} />
             {t.precedents.length === 0 && (
               <p className="rounded border border-dashed border-line px-3 py-4 text-center text-[12px] text-ink-3">
                 No similar ticket in the knowledge base. The draft is a holding reply that promises nothing.
@@ -324,7 +324,7 @@ function ToolButton({ icon: Icon, children, ...rest }) {
 
 // FS-09: level 1 scores the queues, level 2 searches tickets inside the chosen ones; weak matches fall
 // back to a search across all queues.
-function RoutingPath({ route }) {
+function RoutingPath({ route, found }) {
   if (!route.queues.length && !route.fallback_global) return null;
   return (
     <div className="mb-2.5 rounded border border-line bg-slate-50 px-2.5 py-2 text-[11.5px]">
@@ -346,7 +346,9 @@ function RoutingPath({ route }) {
         })}
       </div>
       {route.fallback_global ? (
-        <p className="mt-1 text-amber-800">The routed queues matched weakly, so precedents came from all queues.</p>
+        <p className="mt-1 text-amber-800">
+          {found ? 'The routed queues matched weakly, so precedents came from all queues.' : 'The routed queues matched weakly, and a search across all queues found nothing similar either.'}
+        </p>
       ) : (
         <p className="mt-1 text-ink-3">Precedents were searched inside the highlighted {route.searched.length > 1 ? 'queues' : 'queue'}.</p>
       )}

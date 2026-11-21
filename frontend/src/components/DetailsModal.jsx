@@ -5,10 +5,12 @@ import { overallConfidence, pct } from '../lib/format.js';
 import { ticketHref } from '../lib/useHashRoute.js';
 import { Sparkles } from 'lucide-react';
 
-const routeText = (r) =>
-  r.fallback_global
+const routeText = (r, found) => {
+  if (!r.fallback_global) return `Searched inside ${r.searched.join(' and ') || 'the top queue'}.`;
+  return found
     ? 'The routed queues matched weakly, so precedents came from a search across all queues.'
-    : `Searched inside ${r.searched.join(' and ') || 'the top queue'}.`;
+    : 'The routed queues matched weakly, and a search across all queues found nothing similar either.';
+};
 
 // "Why did the AI decide this?" — opened from the sparkle icon in the dashboard table.
 export default function DetailsModal({ ticket: t, onClose }) {
@@ -23,7 +25,7 @@ export default function DetailsModal({ ticket: t, onClose }) {
         ? `Closest match ${t.precedents[0].ticket_id} at ${t.precedents[0].similarity.toFixed(2)} similarity.`
         : 'No similar ticket in the knowledge base, so the reply is a holding message.',
     },
-    { k: 'Routing', v: routeText(t.retrieval.route) },
+    { k: 'Routing', v: routeText(t.retrieval.route, t.precedents.length) },
     { k: 'Language', v: `${LANGUAGES[t.language.code] ?? t.language.code} (${pct(t.language.confidence)}).` },
   ];
 

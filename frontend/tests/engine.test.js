@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { analyze, createMasker, detectLanguage, maskPII } from '../src/api/mockEngine.js';
+import { ticketTitle } from '../src/lib/format.js';
 import { ApiError, describeError, normalizeTriage, serverMessage } from '../src/api/normalize.js';
 import { SAMPLES, OUTAGE_BURST } from '../src/data/samples.js';
 import { buildSeedTickets } from '../src/data/mockTickets.js';
@@ -136,6 +137,23 @@ test('contract v1 fields the console reads: holding mode, empty precedents, warn
   assert.match(holding.request_id, /^req_[0-9a-f]{12}$/);
   assert.equal(normalizeTriage({ ...base, draft: { ...base.draft, mode: 'weird' } }).draft.mode, 'generated');
   assert.equal(describeError(new ApiError('Engine timed out.', { requestId: 'req_0123456789ab' })), 'Engine timed out. (request req_0123456789ab)');
+});
+
+test('no precedent: empty list and a holding reply that cites nothing', () => {
+  const r = analyze({ ticket_id: 'T4', subject: 'Question about something', body: 'Hi there, quick question.' });
+  assert.deepEqual(r.precedents, []);
+  assert.equal(r.draft.mode, 'holding');
+  assert.deepEqual(r.draft.citations, []);
+  assert.equal(r.retrieval.top_similarity, 0);
+  assert.ok(r.gate.reasons.some((x) => x.code === 'NO_PRECEDENT'));
+  assert.notEqual(r.gate.decision, 'AUTO_DRAFT');
+});
+
+test('ticketTitle falls back to the body when there is no subject', () => {
+  assert.equal(ticketTitle({ subject: 'VPN down', body: 'x' }), 'VPN down');
+  assert.equal(ticketTitle({ subject: '', body: 'Mein  Drucker\n druckt nicht' }), 'Mein Drucker druckt nicht');
+  assert.equal(ticketTitle({ subject: ' ', body: 'a'.repeat(100) }), `${'a'.repeat(80)}…`);
+  assert.equal(ticketTitle({ subject: '', body: '' }), '(no subject)');
 });
 
 test('serverMessage reads gateway and FastAPI error shapes', () => {

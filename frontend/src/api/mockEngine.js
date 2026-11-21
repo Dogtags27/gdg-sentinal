@@ -126,6 +126,12 @@ const FALLBACK = {
   de: 'vielen Dank für Ihre Nachricht. Ein ähnliches Ticket wurde wie in [c0] beschrieben gelöst. Ein Mitarbeiter prüft und ergänzt diese Antwort.',
 };
 
+// Same wording as engine/app/generate/fallbacks.py: promises nothing and cites nothing.
+const HOLDING = {
+  en: 'Thank you for your message. We have received your request, and a specialist will review it and reply as soon as possible.',
+  de: 'vielen Dank für Ihre Nachricht. Wir haben Ihre Anfrage erhalten; eine Fachkraft prüft sie und meldet sich so schnell wie möglich bei Ihnen.',
+};
+
 // First lines of the historical agent answers shown as precedents[].answer_snippet.
 const ANSWERS = {
   security: 'We isolated the affected server, restored the files from the last clean backup and reset all admin credentials.',
@@ -271,7 +277,8 @@ export function analyze(input, ctx = {}) {
 
   // retrieve: level 1 routes to the top queue (or top two when unsure), level 2 searches inside them
   const top = Math.min(0.97, (o.similarity ?? p.sim) + between(r, -0.03, 0.03));
-  const precedents = BANK[category].map(([id, subj, lang], i) => ({
+  // Tickets matching no known topic find nothing in the knowledge base, so the draft is a holding reply.
+  const precedents = (category === 'general' ? [] : BANK[category]).map(([id, subj, lang], i) => ({
     ticket_id: id,
     similarity: round2(top - i * between(r, 0.03, 0.07)),
     language: lang,
@@ -282,8 +289,9 @@ export function analyze(input, ctx = {}) {
     answer_snippet: i === 0 ? ANSWERS[category] : 'Resolved after the customer confirmed the suggested steps worked.',
     tags: TAGS[category],
   }));
-  const route = routeQueues(queueLabel, classification.queue.confidence, top, precedents[0].similarity);
-  const retrieval = { route, top_similarity: precedents[0].similarity, k };
+  const top1 = precedents[0]?.similarity ?? 0;
+  const route = routeQueues(queueLabel, classification.queue.confidence, top, top1);
+  const retrieval = { route, top_similarity: top1, k };
 
   // gate
   const reasons = [];
@@ -294,7 +302,7 @@ export function analyze(input, ctx = {}) {
   if (burst) add('ACTIVE_OUTAGE', `Joined burst cluster ${burst.cluster_id} (${burst.ticket_count} tickets)`);
   if (hits.legal) add('LEGAL_OR_COMPLIANCE', `Matched “${hits.legal}”`);
   if (hits.injection) add('PROMPT_INJECTION', `Matched “${hits.injection}”`);
-  if (precedents[0].similarity < SIM_THRESHOLD) add('NO_PRECEDENT', `Top-1 similarity ${precedents[0].similarity.toFixed(2)} < ${SIM_THRESHOLD}`);
+  if (top1 < SIM_THRESHOLD) add('NO_PRECEDENT', precedents.length ? `Top-1 similarity ${top1.toFixed(2)} < ${SIM_THRESHOLD}` : 'No similar ticket in the knowledge base');
   const minConf = Math.min(classification.type.confidence, classification.queue.confidence, classification.priority.confidence);
   if (minConf < CONF_FLOOR) add('LOW_CONFIDENCE', `Calibrated confidence ${minConf.toFixed(2)} < floor ${CONF_FLOOR}`);
   if (hits.money) add('UNSUPPORTED_REQUEST', `Matched “${hits.money}” — no commitments in draft`);
@@ -305,17 +313,19 @@ export function analyze(input, ctx = {}) {
   const decision = reasons.some((x) => x.severity === 'P1') ? 'ESCALATE_ONCALL' : reasons.length ? 'HUMAN_REVIEW' : 'AUTO_DRAFT';
 
   // draft + validate
-  const c0 = precedents[0].ticket_id;
-  const c1 = precedents[1].ticket_id;
+  const c0 = precedents[0]?.ticket_id;
+  const c1 = precedents[1]?.ticket_id;
   const core = (o.degraded ? FALLBACK : BODY)[draftLang];
   const coreText = typeof core === 'string' ? core : core[category];
   let draftText = HELLO[draftLang] + coreText.replace('[c0]', `[${c0}]`).replace('[c1]', `[${c1}]`) + SIGN[draftLang];
   if (o.ungrounded) draftText = draftText.replace(SIGN[draftLang], ` We will resolve this within 2 business days.${SIGN[draftLang]}`);
+  const holding = precedents.length === 0;
+  if (holding) draftText = HELLO[draftLang] + HOLDING[draftLang] + SIGN[draftLang];
   const draft = {
     language: draftLang,
     text: draftText,
-    citations: o.degraded ? [c0] : [c0, c1],
-    mode: o.degraded ? 'extractive' : 'generated',
+    citations: holding ? [] : o.degraded ? [c0] : [c0, c1],
+    mode: holding ? 'holding' : o.degraded ? 'extractive' : 'generated',
     validation: o.ungrounded
       ? { passed: false, citations_ok: true, numbers_ok: false, language_ok: true, retries: 1, issues: ['“2 business days” is not supported by any cited precedent.'] }
       : { passed: true, citations_ok: true, numbers_ok: true, language_ok: true, retries: 0, issues: [] },
@@ -423,7 +433,7 @@ const sleep = (n) => new Promise((res) => setTimeout(res, n));
 export const mockApi = {
   async health() {
     await sleep(120);
-    return { status: 'ok', mode: 'mock', contract_version: '1.0', components: { gateway: 'stub', engine: 'stub', vector_db: 'stub' } };
+    return { status: 'degraded', mode: 'mock', contract_version: '1.0', components: { gateway: 'stub', engine: 'stub', vector_db: 'stub' } };
   },
   async triage(input, { burst = false } = {}) {
     if (!input.body?.trim()) {

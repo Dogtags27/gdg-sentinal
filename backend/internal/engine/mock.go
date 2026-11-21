@@ -7,6 +7,8 @@ import (
 	"math/rand/v2"
 	"strings"
 	"time"
+	"unicode"
+	"unicode/utf8"
 )
 
 // The contract's TriageResponse examples, copied from contracts/examples (a test keeps them identical).
@@ -60,19 +62,40 @@ func NewMock() *Mock {
 
 func (m *Mock) Mode() string { return "mock" }
 
-func (m *Mock) Health(context.Context) Health { return Health{Engine: "ok", VectorDB: "ok"} }
+// Health reports stub components, so /api/v1/health says degraded with mode "mock", as the contract's rule
+// (ok only when every component is ok) requires; the console labels it from mode.
+func (m *Mock) Health(context.Context) Health { return Health{Engine: "stub", VectorDB: "stub"} }
 
 // Example returns the name of the example the mock answers with for this text.
 func Example(subject, body string) string {
 	text := strings.ToLower(subject + "\n" + body)
 	for _, r := range mockRules {
 		for _, w := range r.words {
-			if strings.Contains(text, w) {
+			if containsWord(text, w) {
 				return r.example
 			}
 		}
 	}
 	return mockDefault
+}
+
+// containsWord finds w at the start of a word ("crash" matches "crashes"); phrases such as "is down" must
+// also end at a word boundary, so "this download" is not an outage.
+func containsWord(text, w string) bool {
+	phrase := strings.Contains(w, " ")
+	for from := 0; ; {
+		i := strings.Index(text[from:], w)
+		if i < 0 {
+			return false
+		}
+		start, end := from+i, from+i+len(w)
+		before, _ := utf8.DecodeLastRuneInString(text[:start])
+		after, _ := utf8.DecodeRuneInString(text[end:])
+		if (start == 0 || !unicode.IsLetter(before)) && (!phrase || end == len(text) || !unicode.IsLetter(after)) {
+			return true
+		}
+		from = start + 1
+	}
 }
 
 func (m *Mock) Triage(ctx context.Context, req Request) (Result, error) {

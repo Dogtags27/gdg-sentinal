@@ -37,15 +37,17 @@ function useHealth() {
 
 function HealthDot() {
   const h = useHealth();
-  const tone = { checking: 'bg-slate-300', ok: 'bg-emerald-400', degraded: 'bg-amber-400', engineDown: 'bg-red-500', down: 'bg-red-500' }[h.state];
-  const gatewayMock = h.detail?.mode === 'mock';
+  // Mock mode reports degraded (its components are stubs) but works, so it gets its own label and colour.
+  const gatewayMock = h.detail?.mode === 'mock' && h.state !== 'down';
+  const tone = gatewayMock ? 'bg-emerald-400' : { checking: 'bg-slate-300', ok: 'bg-emerald-400', degraded: 'bg-amber-400', engineDown: 'bg-red-500', down: 'bg-red-500' }[h.state];
   const label = {
     checking: 'Checking…',
-    ok: USE_MOCK ? 'Mock engine' : gatewayMock ? 'Gateway · mock engine' : 'Live',
+    ok: 'Live',
     degraded: 'Degraded',
     engineDown: 'Engine down',
     down: 'Gateway down',
   }[h.state];
+  const shown = gatewayMock ? (USE_MOCK ? 'Mock engine' : 'Gateway · mock engine') : label;
   const components = h.detail?.components ?? {};
   const title =
     h.error ||
@@ -53,7 +55,7 @@ function HealthDot() {
   return (
     <span title={title} className="flex items-center gap-1.5 rounded bg-white/10 px-2 py-1 text-[11.5px] text-white/90">
       <span className={`h-2 w-2 rounded-full ${tone}`} />
-      {label}
+      {shown}
     </span>
   );
 }

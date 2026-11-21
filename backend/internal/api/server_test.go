@@ -47,6 +47,10 @@ func (f *fakeEngine) Mode() string {
 
 var reqIDPattern = regexp.MustCompile(`^req_[0-9a-f]{12}$`)
 
+// ErrorCode in engine/app/schemas.py.
+var contractCodes = map[string]bool{"INVALID_JSON": true, "VALIDATION_ERROR": true, "PAYLOAD_TOO_LARGE": true, "RATE_LIMITED": true,
+	"ENGINE_UNAVAILABLE": true, "ENGINE_TIMEOUT": true, "ENGINE_BAD_RESPONSE": true, "INTERNAL": true}
+
 func newServer(t *testing.T, eng engine.Engine) *Server {
 	t.Helper()
 	return &Server{Engine: eng, Log: slog.New(slog.NewTextHandler(io.Discard, nil)), StaticDir: t.TempDir(), InsightsDir: t.TempDir()}
@@ -130,6 +134,10 @@ func TestTriageValidation(t *testing.T) {
 		{"body too long", `{"body":"` + strings.Repeat("ä", 10_001) + `"}`, 422, "VALIDATION_ERROR"},
 		{"subject too long", `{"subject":"` + strings.Repeat("a", 501) + `","body":"x"}`, 422, "VALIDATION_ERROR"},
 		{"bad ticket id", `{"body":"x","ticket_id":"../etc"}`, 422, "VALIDATION_ERROR"},
+		{"trailing data", `{"body":"hi"} xyz`, 400, "INVALID_JSON"},
+		{"field names are case-sensitive", `{"BODY":"x"}`, 422, "VALIDATION_ERROR"},
+		{"null body", `{"body":null}`, 422, "VALIDATION_ERROR"},
+		{"too long once masked", `{"body":"` + strings.Repeat("x@y.de ", 1400) + `"}`, 422, "VALIDATION_ERROR"},
 		{"request too large", `{"body":"` + strings.Repeat("a", 70<<10) + `"}`, 413, "PAYLOAD_TOO_LARGE"},
 	}
 	for _, c := range cases {
@@ -137,6 +145,9 @@ func TestTriageValidation(t *testing.T) {
 			rec, out := do(t, h, "POST", "/api/v1/triage", c.body)
 			if rec.Code != c.status || errField(out, "code") != c.code {
 				t.Errorf("got %d %q, want %d %q (%s)", rec.Code, errField(out, "code"), c.status, c.code, rec.Body)
+			}
+			if !contractCodes[errField(out, "code")] {
+				t.Errorf("%q is not a contract error code", errField(out, "code"))
 			}
 			if !reqIDPattern.MatchString(errField(out, "request_id")) || errField(out, "message") == "" {
 				t.Errorf("error envelope incomplete: %s", rec.Body)
@@ -198,7 +209,7 @@ func TestHealth(t *testing.T) {
 		{"live ok", &fakeEngine{health: engine.Health{Engine: "ok", VectorDB: "ok"}}, "ok", map[string]any{"gateway": "ok", "engine": "ok", "vector_db": "ok"}},
 		{"stub stages", &fakeEngine{health: engine.Health{Engine: "stub", VectorDB: "unknown"}}, "degraded", map[string]any{"gateway": "ok", "engine": "stub", "vector_db": "unknown"}},
 		{"engine down", &fakeEngine{health: engine.Health{Engine: "down", VectorDB: "unknown"}}, "down", map[string]any{"gateway": "ok", "engine": "down", "vector_db": "unknown"}},
-		{"mock", &fakeEngine{mode: "mock", health: engine.Health{Engine: "ok", VectorDB: "ok"}}, "ok", map[string]any{"gateway": "ok", "engine": "stub", "vector_db": "stub"}},
+		{"mock", &fakeEngine{mode: "mock", health: engine.Health{Engine: "stub", VectorDB: "stub"}}, "degraded", map[string]any{"gateway": "ok", "engine": "stub", "vector_db": "stub"}},
 	}
 	for _, c := range cases {
 		rec, out := do(t, newServer(t, c.eng).Handler(), "GET", "/api/v1/health", "")
@@ -210,6 +221,43 @@ func TestHealth(t *testing.T) {
 			if comp[k] != v {
 				t.Errorf("%s: components.%s = %v, want %v", c.name, k, comp[k], v)
 			}
+		}
+	}
+}
+
+func TestRateLimitBehindProxyUsesTheLastForwardedAddress(t *testing.T) {
+	s := newServer(t, &fakeEngine{})
+	s.Limiter = ratelimit.New(60, 1)
+	s.TrustProxy = true
+	h := s.Handler()
+	send := func(fwd string) int {
+		req := httptest.NewRequest("POST", "/api/v1/triage", strings.NewReader(`{"body":"x"}`))
+		req.Header.Set("X-Forwarded-For", fwd)
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		return rec.Code
+	}
+	if code := send("1.1.1.1, 203.0.113.7"); code != 200 {
+		t.Fatalf("first request: %d", code)
+	}
+	if code := send("9.9.9.9, 203.0.113.7"); code != 429 {
+		t.Errorf("a spoofed first entry must not give a fresh bucket, got %d", code)
+	}
+	if code := send("1.1.1.1, 203.0.113.8"); code != 200 {
+		t.Errorf("another real client has its own bucket, got %d", code)
+	}
+}
+
+func TestWrongMethod(t *testing.T) {
+	h := newServer(t, &fakeEngine{}).Handler()
+	for path, allow := range map[string]string{"/api/v1/triage": "POST", "/api/v1/health": "GET"} {
+		method := "GET"
+		if allow == "GET" {
+			method = "POST"
+		}
+		rec, out := do(t, h, method, path, "")
+		if rec.Code != 405 || rec.Header().Get("Allow") != allow || errField(out, "code") != "METHOD_NOT_ALLOWED" {
+			t.Errorf("%s %s: %d %s", method, path, rec.Code, rec.Body)
 		}
 	}
 }
@@ -256,6 +304,10 @@ func TestStatic(t *testing.T) {
 	rec, _ := do(t, h, "GET", "/assets/app-123.js", "")
 	if !strings.Contains(rec.Header().Get("Cache-Control"), "immutable") {
 		t.Errorf("assets cache = %q", rec.Header().Get("Cache-Control"))
+	}
+	rec, _ = do(t, h, "GET", "/assets/old-chunk.js", "")
+	if rec.Code != 404 || strings.Contains(rec.Body.String(), "console") || strings.Contains(rec.Header().Get("Cache-Control"), "immutable") {
+		t.Errorf("missing asset: %d %q cache=%q", rec.Code, rec.Body, rec.Header().Get("Cache-Control"))
 	}
 }
 
