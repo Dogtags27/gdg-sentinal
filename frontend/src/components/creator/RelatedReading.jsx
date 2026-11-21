@@ -22,7 +22,7 @@ function Readable({ text }) {
     if (!m) return p;
     const word = PLACEHOLDER_WORDS[m[1].toLowerCase()] ?? m[1].replace(/_/g, ' ');
     return (
-      <span key={i} title="Hidden for privacy" className="rounded bg-slate-100 px-1 text-[0.92em] text-ink-3">
+      <span key={i} title="Hidden for privacy" className="rounded bg-sand px-1 text-[0.92em] text-ink-3">
         {word}
       </span>
     );
@@ -46,7 +46,7 @@ function LanguageNote({ item, reader }) {
     return (
       <span
         title="We couldn't translate this one, so it's shown as it was written."
-        className="inline-flex shrink-0 cursor-help items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-[11.5px] text-ink-3"
+        className="inline-flex shrink-0 cursor-help items-center gap-1 rounded-full bg-sand px-2 py-0.5 text-[11.5px] text-ink-3"
       >
         <Languages size={12} aria-hidden /> In {lang}
       </span>
@@ -96,13 +96,13 @@ export default function RelatedReading({ ticketId, className = '' }) {
         <div className="space-y-2" aria-live="polite">
           <span className="sr-only">Finding similar solved issues…</span>
           {[0, 1].map((i) => (
-            <div key={i} className="h-[74px] animate-pulse rounded-xl border border-line bg-white" />
+            <div key={i} className="h-[74px] animate-pulse rounded-xl border border-line bg-card" />
           ))}
         </div>
       )}
 
       {state.error && (
-        <div className="flex items-center gap-3 rounded-xl border border-line bg-white px-5 py-4 text-[13px] text-ink-3">
+        <div className="flex items-center gap-3 rounded-xl border border-line bg-card px-5 py-4 text-[13px] text-ink-3">
           Suggestions aren't available right now.
           <button onClick={load} className="ml-auto flex items-center gap-1.5 font-medium text-brand-600 hover:underline">
             <RotateCw size={13} aria-hidden /> Try again
@@ -114,7 +114,7 @@ export default function RelatedReading({ ticketId, className = '' }) {
         <ul className="space-y-2">
           {items.map((it) => (
             <li key={it.ref}>
-              <details className="group rounded-xl border border-line bg-white open:shadow-sentinel-md">
+              <details className="group rounded-xl border border-line bg-card open:shadow-sentinel-md">
                 <summary className="flex cursor-pointer list-none items-start gap-3 px-5 py-3.5 outline-none focus-visible:ring-2 focus-visible:ring-teal-400 [&::-webkit-details-marker]:hidden">
                   <div className="min-w-0 flex-1" lang={it.language}>
                     <p className="text-[14px] font-medium text-ink">

@@ -26,7 +26,7 @@ export default function TriageSplit({ tickets, active }) {
   });
 
   return (
-    <section className="rounded-xl border border-line bg-white px-4 py-4 sm:px-5" aria-label="How the gate split this session's tickets">
+    <section className="rounded-xl border border-line bg-card px-4 py-4 sm:px-5" aria-label="How the gate split this session's tickets">
       <div className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-1">
         <h2 className="text-[15px] font-semibold text-ink">
           The gate sorted <span className="tabular">{n}</span> ticket{n === 1 ? '' : 's'}
@@ -36,7 +36,7 @@ export default function TriageSplit({ tickets, active }) {
         </p>
       </div>
 
-      <div className="mt-3 flex h-3 gap-0.5 overflow-hidden rounded-full bg-slate-100">
+      <div className="mt-3 flex h-3 gap-0.5 overflow-hidden rounded-full bg-sand-2">
         {n > 0 && parts.map((p) => p.count > 0 && (
           <a key={p.id} href={viewHref(p.id)} title={`${p.count} ${p.label.toLowerCase()}`} className={`${p.bar} transition-opacity hover:opacity-80`} style={{ width: `${(p.count / n) * 100}%` }} />
         ))}
@@ -50,7 +50,7 @@ export default function TriageSplit({ tickets, active }) {
               key={p.id}
               href={viewHref(p.id)}
               aria-current={on ? 'page' : undefined}
-              className={`flex items-baseline gap-3 rounded-lg border px-3 py-2 transition ${on ? 'border-brand-600 bg-brand-50' : 'border-transparent hover:border-line hover:bg-slate-50'}`}
+              className={`flex items-baseline gap-3 rounded-lg border px-3 py-2 transition ${on ? 'border-brand-600 bg-brand-50' : 'border-transparent hover:border-line hover:bg-sand'}`}
             >
               <span className={`tabular text-[28px] leading-none font-semibold ${p.text}`}>{p.count}</span>
               <span className="min-w-0">

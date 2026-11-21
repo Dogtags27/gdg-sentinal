@@ -14,11 +14,14 @@
   --color-brand-100: #e0f2fe;
   --color-brand-50: #f0f9ff;
 
-  /* Cool neutral grey: reads as a calm work surface, not an editorial page */
-  --color-page: #f3f5f7;
-  --color-card: #ffffff;
-  --color-line: #e2e6eb;
-  --color-line-dark: #cdd3db;
+  /* Warm beige work surface with cream cards */
+  --color-page: #f3ece0;
+  --color-card: #fffcf6;
+  --color-sand: #f6efe3;
+  --color-sand-2: #efe6d7;
+  --color-sand-3: #e5dac7;
+  --color-line: #e6dccb;
+  --color-line-dark: #d4c7b2;
   --color-ink: #14171f;
   --color-ink-2: #343a46;
   --color-ink-3: #666f7d;
@@ -30,8 +33,8 @@
 
   /* Chart tokens */
   --color-series-1: #0d9488;
-  --color-chart-grid: #e4e8ed;
-  --color-chart-axis: #c5ccd5;
+  --color-chart-grid: #ebe2d3;
+  --color-chart-axis: #cdbfa8;
   --color-chart-muted: #8492a6;
 
   /* Elevation */
@@ -51,7 +54,7 @@ body {
 .font-mono { font-family: var(--font-mono); }
 .tabular { font-variant-numeric: tabular-nums; }
 
-.thin-scroll { scrollbar-width: thin; scrollbar-color: #cbd5e1 transparent; }
+.thin-scroll { scrollbar-width: thin; scrollbar-color: #d4c7b2 transparent; }
 
 @keyframes pulse-dot {
   0% { transform: scale(0.85); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.6); }

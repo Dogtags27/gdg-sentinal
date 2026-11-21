@@ -87,7 +87,7 @@ export default function TriageDashboard({ view: viewId = 'needs', query, setQuer
           onClick={simulateOutage}
           disabled={busy.outage}
           title="Demo: sends 4 drill tickets (tagged SIM) to show major-incident detection. Real tickets are never affected."
-          className="ml-auto flex items-center gap-1.5 rounded-lg border border-line-dark bg-white px-3 py-1.5 text-[12.5px] font-medium text-ink-2 transition hover:border-red-300 hover:text-red-700 disabled:opacity-60"
+          className="ml-auto flex items-center gap-1.5 rounded-lg border border-line-dark bg-card px-3 py-1.5 text-[12.5px] font-medium text-ink-2 transition hover:border-red-300 hover:text-red-700 disabled:opacity-60"
         >
           {busy.outage ? <Loader2 size={13} className="animate-spin" /> : <Zap size={13} />}
           Outage drill
@@ -96,7 +96,7 @@ export default function TriageDashboard({ view: viewId = 'needs', query, setQuer
 
       <TriageSplit tickets={tickets} active={view.id} />
 
-      <section className="rounded-xl border border-line bg-white">
+      <section className="rounded-xl border border-line bg-card">
         <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-line px-3 py-2.5 sm:px-4">
           <nav className="flex flex-wrap gap-1" aria-label="Ticket views">
             {VIEWS.map((v) => {
@@ -107,7 +107,7 @@ export default function TriageDashboard({ view: viewId = 'needs', query, setQuer
                   href={viewHref(v.id)}
                   aria-current={on ? 'page' : undefined}
                   className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-[13.5px] font-medium transition ${
-                    on ? 'bg-brand-800 text-white' : 'text-ink-2 hover:bg-slate-100'
+                    on ? 'bg-brand-800 text-white' : 'text-ink-2 hover:bg-sand-2'
                   }`}
                 >
                   {v.label}
@@ -117,7 +117,7 @@ export default function TriageDashboard({ view: viewId = 'needs', query, setQuer
             })}
           </nav>
           {query && (
-            <span className="ml-auto flex items-center gap-1.5 rounded-md bg-slate-100 px-2 py-1 text-[12px] text-ink-2">
+            <span className="ml-auto flex items-center gap-1.5 rounded-md bg-sand-2 px-2 py-1 text-[12px] text-ink-2">
               Matching “{query}”
               <button onClick={() => setQuery('')} className="rounded text-ink-3 hover:text-ink" aria-label="Clear search"><X size={13} /></button>
             </span>
@@ -129,10 +129,10 @@ export default function TriageDashboard({ view: viewId = 'needs', query, setQuer
           <div className="flex flex-wrap items-center justify-between gap-2 border-b border-brand-100 bg-brand-50 px-4 py-2 text-[12px]">
             <span className="font-medium text-brand-900">{picked.length} selected</span>
             <span className="flex items-center gap-2">
-              <button onClick={() => bulk('accepted')} className="flex items-center gap-1 rounded border border-line-dark bg-white px-2.5 py-1 font-medium text-ink hover:border-teal-500 hover:text-teal-800">
+              <button onClick={() => bulk('accepted')} className="flex items-center gap-1 rounded border border-line-dark bg-card px-2.5 py-1 font-medium text-ink hover:border-teal-500 hover:text-teal-800">
                 <Check size={13} /> Accept suggestions
               </button>
-              <button onClick={() => bulk('rejected')} className="flex items-center gap-1 rounded border border-line-dark bg-white px-2.5 py-1 font-medium text-ink hover:border-red-400 hover:text-red-800">
+              <button onClick={() => bulk('rejected')} className="flex items-center gap-1 rounded border border-line-dark bg-card px-2.5 py-1 font-medium text-ink hover:border-red-400 hover:text-red-800">
                 <X size={13} /> Reject
               </button>
             </span>
@@ -183,12 +183,12 @@ export default function TriageDashboard({ view: viewId = 'needs', query, setQuer
             Showing <b className="tabular text-ink">{rows.length ? (cur - 1) * pageSize + 1 : 0}–{Math.min(cur * pageSize, rows.length)}</b> of <b className="tabular text-ink">{rows.length}</b>
           </span>
           <div className="flex items-center gap-1">
-            <button disabled={cur === 1} onClick={() => setPage(cur - 1)} className="grid h-7 w-7 place-items-center rounded hover:bg-slate-100 disabled:opacity-30" aria-label="Previous page"><ChevronLeft size={15} /></button>
+            <button disabled={cur === 1} onClick={() => setPage(cur - 1)} className="grid h-7 w-7 place-items-center rounded hover:bg-sand-2 disabled:opacity-30" aria-label="Previous page"><ChevronLeft size={15} /></button>
             {Array.from({ length: pages }, (_, i) => i + 1).map((p) => (
-              <button key={p} onClick={() => setPage(p)} aria-current={p === cur ? 'page' : undefined} className={`tabular h-7 min-w-7 rounded px-1.5 ${p === cur ? 'bg-brand-800 font-semibold text-white' : 'hover:bg-slate-100'}`}>{p}</button>
+              <button key={p} onClick={() => setPage(p)} aria-current={p === cur ? 'page' : undefined} className={`tabular h-7 min-w-7 rounded px-1.5 ${p === cur ? 'bg-brand-800 font-semibold text-white' : 'hover:bg-sand-2'}`}>{p}</button>
             ))}
-            <button disabled={cur === pages} onClick={() => setPage(cur + 1)} className="grid h-7 w-7 place-items-center rounded hover:bg-slate-100 disabled:opacity-30" aria-label="Next page"><ChevronRight size={15} /></button>
-            <select value={pageSize} onChange={(e) => { setPageSize(Number(e.target.value)); setPage(1); }} aria-label="Rows per page" className="ml-3 h-7 rounded border border-line bg-white px-1.5 text-ink">
+            <button disabled={cur === pages} onClick={() => setPage(cur + 1)} className="grid h-7 w-7 place-items-center rounded hover:bg-sand-2 disabled:opacity-30" aria-label="Next page"><ChevronRight size={15} /></button>
+            <select value={pageSize} onChange={(e) => { setPageSize(Number(e.target.value)); setPage(1); }} aria-label="Rows per page" className="ml-3 h-7 rounded border border-line bg-card px-1.5 text-ink">
               {[10, 25, 50].map((n) => <option key={n} value={n}>{n}</option>)}
             </select>
             <span className="ml-1 text-ink-3">per page</span>
@@ -206,7 +206,7 @@ function Row({ t, checked, onCheck, onDetails, onReview }) {
   const p1 = t.gate.reasons.filter((r) => r.severity === 'P1');
   const shown = (p1.length ? p1 : t.gate.reasons).slice(0, 1);
   return (
-    <tr className={`border-b border-line/70 transition hover:bg-slate-50 [&>td]:py-3.5 [&>td]:pr-3 ${checked ? 'bg-brand-50/70' : ''}`}>
+    <tr className={`border-b border-line/70 transition hover:bg-sand [&>td]:py-3.5 [&>td]:pr-3 ${checked ? 'bg-brand-50/70' : ''}`}>
       <td className="py-2.5 pl-1"><input type="checkbox" checked={checked} onChange={onCheck} aria-label={`Select ${t.ticket_id}`} className="accent-brand-600" /></td>
       <td className="py-2.5 pr-3 whitespace-nowrap">
         <a href={ticketHref(t.ticket_id)} className="font-mono text-[13px] font-medium text-brand-600 hover:underline">{t.ticket_id}</a>
@@ -229,7 +229,7 @@ function Row({ t, checked, onCheck, onDetails, onReview }) {
       <td className="py-2.5 pr-3 whitespace-nowrap">
         <span className="flex items-center gap-1">
           <DecisionBadge decision={t.gate.decision} short />
-          <button onClick={onDetails} title="Why this decision?" aria-label={`Why ${t.ticket_id} got this decision`} className="rounded p-1 text-ink-3 hover:bg-slate-100 hover:text-brand-700"><Sparkles size={14} /></button>
+          <button onClick={onDetails} title="Why this decision?" aria-label={`Why ${t.ticket_id} got this decision`} className="rounded p-1 text-ink-3 hover:bg-sand-2 hover:text-brand-700"><Sparkles size={14} /></button>
         </span>
       </td>
       <td className="py-2.5 pr-3">
@@ -237,8 +237,8 @@ function Row({ t, checked, onCheck, onDetails, onReview }) {
           <span className={`max-w-[170px] leading-snug ${t.review === 'rejected' ? 'text-ink-3 line-through' : 'text-ink-2'}`}>{c.queue.label}</span>
           {t.review === 'pending' && (
             <span className="ml-auto flex gap-1">
-              <button onClick={() => onReview('accepted')} title="Accept suggestion" aria-label={`Accept suggestion for ${t.ticket_id}`} className="grid h-6 w-6 place-items-center rounded border border-line bg-white hover:border-teal-500 hover:text-teal-700"><Check size={13} /></button>
-              <button onClick={() => onReview('rejected')} title="Reject suggestion" aria-label={`Reject suggestion for ${t.ticket_id}`} className="grid h-6 w-6 place-items-center rounded border border-line bg-white hover:border-red-400 hover:text-red-700"><X size={13} /></button>
+              <button onClick={() => onReview('accepted')} title="Accept suggestion" aria-label={`Accept suggestion for ${t.ticket_id}`} className="grid h-6 w-6 place-items-center rounded border border-line bg-card hover:border-teal-500 hover:text-teal-700"><Check size={13} /></button>
+              <button onClick={() => onReview('rejected')} title="Reject suggestion" aria-label={`Reject suggestion for ${t.ticket_id}`} className="grid h-6 w-6 place-items-center rounded border border-line bg-card hover:border-red-400 hover:text-red-700"><X size={13} /></button>
             </span>
           )}
           {t.review === 'accepted' && <Check size={13} className="text-teal-600" aria-label="Accepted" />}

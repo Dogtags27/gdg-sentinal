@@ -26,11 +26,11 @@ export function DecisionBadge({ decision, short = false }) {
 }
 
 const STATUS_STYLE = {
-  new: ['bg-slate-100 text-ink-2 ring-1 ring-inset ring-slate-300', Plus],
+  new: ['bg-sand-2 text-ink-2 ring-1 ring-inset ring-slate-300', Plus],
   escalated: ['bg-red-600 text-white', Siren],
   review: ['bg-amber-50 text-amber-900 ring-1 ring-inset ring-amber-300', UserCheck],
   drafted: ['bg-teal-50 text-teal-800 ring-1 ring-inset ring-teal-200', PenLine],
-  resolved: ['bg-slate-100 text-ink-3 ring-1 ring-inset ring-slate-300', CheckCircle2],
+  resolved: ['bg-sand-2 text-ink-3 ring-1 ring-inset ring-slate-300', CheckCircle2],
 };
 export function StatusBadge({ status }) {
   const [cls, Icon] = STATUS_STYLE[status] ?? STATUS_STYLE.new;
@@ -59,7 +59,7 @@ export function LangBadge({ code }) {
     <span
       title={LANGUAGES[code] ?? code}
       className={`inline-flex h-5.5 min-w-7 items-center justify-center rounded border px-1 text-[11px] font-semibold uppercase tracking-wide ${
-        supported ? 'border-slate-300 bg-white text-ink-2' : 'border-amber-400 bg-amber-50 text-amber-800'
+        supported ? 'border-slate-300 bg-card text-ink-2' : 'border-amber-400 bg-amber-50 text-amber-800'
       }`}
     >
       {code}
@@ -88,7 +88,7 @@ export function ConfidenceBar({ value, width = 'w-16' }) {
   const tone = value >= 0.8 ? 'bg-emerald-500' : value >= 0.6 ? 'bg-amber-500' : 'bg-red-500';
   return (
     <span className="inline-flex items-center gap-1.5">
-      <span className={`h-2 ${width} overflow-hidden rounded-full bg-slate-200`}>
+      <span className={`h-2 ${width} overflow-hidden rounded-full bg-sand-3`}>
         <span className={`block h-full rounded-full ${tone}`} style={{ width: `${Math.round(value * 100)}%` }} />
       </span>
       <span className="tabular text-[12px] text-ink-2">{pct(value)}</span>

@@ -97,7 +97,7 @@ function DatasetStory() {
 
 function Panel({ title, lede, tag, children, className = '' }) {
   return (
-    <section className={`rounded-2xl border border-line bg-white px-5 py-5 sm:px-6 ${className}`}>
+    <section className={`rounded-2xl border border-line bg-card px-5 py-5 sm:px-6 ${className}`}>
       <div className="flex flex-wrap items-start gap-x-3 gap-y-1">
         <h2 className="text-[17px] font-semibold tracking-tight text-ink">{title}</h2>
         {tag && <span className="mt-0.5 rounded bg-amber-100 px-1.5 py-0.5 text-[11.5px] font-medium text-amber-900">{tag}</span>}
@@ -121,7 +121,7 @@ function RecallStory({ recall, precision, placeholder }) {
       <div className="flex flex-wrap items-center gap-6">
         <div className="grid grid-cols-10 gap-[5px]" role="img" aria-label={`${caught} of 100 high-priority incidents escalated`}>
           {Array.from({ length: 100 }, (_, i) => (
-            <span key={i} className={`h-3.5 w-3.5 rounded-full ${i < caught ? 'bg-red-600' : 'border-2 border-red-300 bg-white'}`} />
+            <span key={i} className={`h-3.5 w-3.5 rounded-full ${i < caught ? 'bg-red-600' : 'border-2 border-red-300 bg-card'}`} />
           ))}
         </div>
         <dl className="space-y-3 text-[13px]">
@@ -319,7 +319,7 @@ function ModelQuality({ m, lat, placeholder }) {
         {heads.map((h) => (
           <li key={h.label} className="grid grid-cols-[72px_1fr_48px] items-center gap-3 text-[13px]">
             <span className="font-medium text-ink">{h.label}</span>
-            <span className="relative h-3 rounded-full bg-slate-100">
+            <span className="relative h-3 rounded-full bg-sand-2">
               <span className="absolute inset-y-0 left-0 rounded-full bg-brand-700" style={{ width: `${h.v * 100}%` }} />
             </span>
             <span className="tabular text-right font-semibold text-ink">{pct1(h.v)}</span>
@@ -387,7 +387,7 @@ function SessionReport() {
                       <b className={`mr-1.5 font-semibold ${p1 ? 'text-red-700' : 'text-amber-700'}`}>{REASONS[r.code]?.severity}</b>
                       {REASONS[r.code]?.label ?? r.code}
                     </span>
-                    <span className="h-2.5 rounded-full bg-slate-100">
+                    <span className="h-2.5 rounded-full bg-sand-2">
                       <span className={`block h-full rounded-full ${p1 ? 'bg-red-600' : 'bg-amber-400'}`} style={{ width: `${(r.value / maxReason) * 100}%` }} />
                     </span>
                     <span className="tabular text-right font-semibold">{r.value}</span>

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { ArrowLeft, Check, CheckCircle2, Loader2, SearchX } from 'lucide-react';
+import { Check, CheckCircle2, Loader2, SearchX } from 'lucide-react';
 import { api } from '../../api/client.js';
 import RelatedReading from './RelatedReading.jsx';
 import { STATUS, StatusPill, rememberStatus, when } from './status.jsx';
@@ -71,17 +71,10 @@ export default function CreatorTicket({ id }) {
     return () => clearInterval(t);
   }, [load]);
 
-  const back = (
-    <a href="#/help" className="inline-flex items-center gap-1.5 text-[13px] font-medium text-ink-3 hover:text-ink">
-      <ArrowLeft size={14} aria-hidden /> Your tickets
-    </a>
-  );
-
   if (missing) {
     return (
       <div className="space-y-4">
-        {back}
-        <section className="rounded-2xl border border-line bg-white p-8 text-center">
+        <section className="help-card rounded-2xl p-8 text-center">
           <SearchX size={28} className="mx-auto text-ink-3" aria-hidden />
           <h1 className="mt-3 text-[18px] font-semibold text-ink">We can't find this ticket</h1>
           <p className="mx-auto mt-1 max-w-sm text-[13.5px] text-ink-3">{STATUS.missing.tip}</p>
@@ -99,8 +92,7 @@ export default function CreatorTicket({ id }) {
   if (!view) {
     return (
       <div className="space-y-4">
-        {back}
-        <div className="flex items-center gap-2 rounded-2xl border border-line bg-white p-8 text-[13.5px] text-ink-3">
+        <div className="flex items-center gap-2 help-card rounded-2xl p-8 text-[13.5px] text-ink-3">
           <Loader2 size={16} className="animate-spin" aria-hidden /> Loading your ticket…
         </div>
       </div>
@@ -110,8 +102,7 @@ export default function CreatorTicket({ id }) {
   const resolved = view.status === 'resolved';
   return (
     <div className="space-y-6">
-      {back}
-      <section className="rounded-2xl border border-line bg-white p-6 shadow-sentinel-md sm:p-8">
+      <section className="help-card rounded-2xl p-6 sm:p-8">
         <div className="flex flex-wrap items-center gap-3">
           <span className="font-mono text-[12.5px] text-ink-3">{view.ticket_id}</span>
           <span className="ml-auto">

@@ -62,7 +62,7 @@ function Tip({ text, children, className = '', end = false }) {
 
 function Card({ title, sub, children, className = '' }) {
   return (
-    <section className={`min-w-0 rounded-2xl border border-line bg-white px-5 py-5 sm:px-6 ${className}`}>
+    <section className={`min-w-0 rounded-2xl border border-line bg-card px-5 py-5 sm:px-6 ${className}`}>
       <h2 className="text-[16px] font-semibold tracking-tight text-ink">{title}</h2>
       {sub && <p className="mt-0.5 text-[12.5px] text-ink-3">{sub}</p>}
       <div className="mt-4">{children}</div>
@@ -270,7 +270,7 @@ function PivotTable({ tickets, pivot, chip, onChip }) {
   );
 }
 
-const selectCls = 'h-8 rounded-md border border-line-dark bg-white px-2 text-[13px] text-ink outline-none focus-visible:ring-2 focus-visible:ring-teal-400';
+const selectCls = 'h-8 rounded-md border border-line-dark bg-card px-2 text-[13px] text-ink outline-none focus-visible:ring-2 focus-visible:ring-teal-400';
 
 export default function FunnelPage() {
   const { tickets } = useTickets();
@@ -287,7 +287,7 @@ export default function FunnelPage() {
   const scopeNote = active === 'all' ? `${focus.length} tickets` : `${focus.length} tickets · ${pivot.label}: ${active}`;
 
   const chipCls = (on) =>
-    `rounded-full border px-2.5 py-1 text-[12.5px] transition outline-none focus-visible:ring-2 focus-visible:ring-teal-400 ${on ? 'border-brand-700 bg-brand-700 text-white' : 'border-line-dark bg-white text-ink-2 hover:border-brand-600'}`;
+    `rounded-full border px-2.5 py-1 text-[12.5px] transition outline-none focus-visible:ring-2 focus-visible:ring-teal-400 ${on ? 'border-brand-700 bg-brand-700 text-white' : 'border-line-dark bg-card text-ink-2 hover:border-brand-600'}`;
 
   return (
     <div className="px-4 py-5 sm:px-6 lg:px-8">
@@ -319,7 +319,7 @@ export default function FunnelPage() {
       </div>
 
       {scoped.length === 0 ? (
-        <div className="mt-5 rounded-2xl border border-dashed border-line-dark bg-white/60 px-6 py-10 text-center text-[13.5px] text-ink-3">
+        <div className="mt-5 rounded-2xl border border-dashed border-line-dark bg-card/70 px-6 py-10 text-center text-[13.5px] text-ink-3">
           No tickets here yet. Paste one in{' '}
           <a href="#/lab" className="font-medium text-brand-600 hover:underline">Live triage</a> to watch it flow through.
         </div>

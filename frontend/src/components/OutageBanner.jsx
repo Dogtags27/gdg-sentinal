@@ -19,7 +19,7 @@ export default function OutageBanner() {
       </span>
       <span className="ml-auto flex gap-2">
         <button onClick={() => go('#/board')} className="rounded border border-white/40 px-2.5 py-1 text-[12px] hover:bg-white/10">View on board</button>
-        <button onClick={resolveOutage} className="rounded bg-white px-2.5 py-1 text-[12px] font-medium text-red-800 hover:bg-red-50">Mark resolved</button>
+        <button onClick={resolveOutage} className="rounded bg-card px-2.5 py-1 text-[12px] font-medium text-red-800 hover:bg-red-50">Mark resolved</button>
       </span>
     </div>
   );

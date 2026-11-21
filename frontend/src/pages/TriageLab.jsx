@@ -597,7 +597,7 @@ function DraftCard({ t, reduce }) {
       <p className="mb-2.5 text-[13px] text-slate-400">
         {MODE[t.draft.mode] ?? t.draft.mode}. {held ? 'Held: it will not be sent until a person accepts the triage.' : 'Ready to send after a quick check.'}
       </p>
-      <div className="rounded-xl bg-white px-5 py-4 text-ink shadow-[0_10px_40px_-12px_rgba(0,0,0,0.6)]">
+      <div className="rounded-xl bg-card px-5 py-4 text-ink shadow-[0_10px_40px_-12px_rgba(0,0,0,0.6)]">
         <DraftText text={t.draft.text.slice(0, n)} known={t.precedents.map((p) => p.ticket_id)} />
         {typing && <span className="lab-caret ml-0.5 inline-block h-4 w-[2px] translate-y-0.5 bg-ink" aria-hidden />}
       </div>
@@ -658,7 +658,7 @@ function Verdict({ t, onAgain }) {
         <button
           type="button"
           onClick={() => go(ticketHref(t.ticket_id))}
-          className="flex items-center gap-1.5 rounded-lg bg-white px-3.5 py-2 text-[14px] font-semibold text-brand-950 hover:bg-slate-100"
+          className="flex items-center gap-1.5 rounded-lg bg-card px-3.5 py-2 text-[14px] font-semibold text-brand-950 hover:bg-sand-2"
         >
           <ExternalLink size={15} /> Open {t.ticket_id}
         </button>

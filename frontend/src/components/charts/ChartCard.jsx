@@ -6,7 +6,7 @@ import { BarChart3, Table2 } from 'lucide-react';
 export default function ChartCard({ title, subtitle, table, format = (v) => v, children, className = '' }) {
   const [asTable, setAsTable] = useState(false);
   return (
-    <section className={`rounded border border-line bg-white px-4 py-3 ${className}`}>
+    <section className={`rounded border border-line bg-card px-4 py-3 ${className}`}>
       <header className="mb-2 flex items-start gap-2">
         <div className="min-w-0">
           <h3 className="text-[13.5px] font-semibold">{title}</h3>
@@ -15,7 +15,7 @@ export default function ChartCard({ title, subtitle, table, format = (v) => v, c
         {table && (
           <button
             onClick={() => setAsTable((v) => !v)}
-            className="ml-auto flex items-center gap-1 rounded border border-line px-2 py-0.5 text-[11.5px] text-ink-2 hover:bg-slate-50"
+            className="ml-auto flex items-center gap-1 rounded border border-line px-2 py-0.5 text-[11.5px] text-ink-2 hover:bg-sand"
             aria-pressed={asTable}
           >
             {asTable ? <BarChart3 size={12} /> : <Table2 size={12} />} {asTable ? 'Chart' : 'Table'}
