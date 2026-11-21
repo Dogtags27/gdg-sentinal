@@ -96,7 +96,7 @@ Rules:
 
 ### Data analyst
 - [ ] DA-01 Pull the raw CSV, open the EDA notebook
-- [ ] DA-02 EDA with JSON exports for the Insights tab
+- [ ] DA-02 EDA with JSON exports for the Insights tab (`python3 analytics/eda_pipeline.py` then `python3 analytics/verify_operations_insights.py`)
 - [ ] DA-03 Embed the knowledge base (**critical**, by 1:30)
 - [ ] DA-04 Load the Qdrant collection and snapshot it (**critical**)
 - [ ] DA-05 Retrieval quality and similarity threshold (**critical**)
