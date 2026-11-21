@@ -4,18 +4,10 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"regexp"
-	"sync/atomic"
 	"time"
 )
 
 type ctxKey struct{}
-
-var (
-	requestSeq atomic.Uint64
-	validReqID = regexp.MustCompile(`^[A-Za-z0-9._-]{1,64}$`)
-	bootPrefix = fmt.Sprintf("%x", time.Now().Unix()&0xffffff)
-)
 
 func requestID(r *http.Request) string {
 	id, _ := r.Context().Value(ctxKey{}).(string)
@@ -47,10 +39,8 @@ func (w *statusWriter) Write(b []byte) (int, error) {
 func (s *Server) middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
-		id := r.Header.Get("X-Request-ID")
-		if !validReqID.MatchString(id) {
-			id = fmt.Sprintf("%s-%d", bootPrefix, requestSeq.Add(1))
-		}
+		// The gateway assigns request IDs (contract v1: "req_" + 12 lowercase hex); client values are ignored.
+		id := "req_" + randomHex(6)
 		r = r.WithContext(context.WithValue(r.Context(), ctxKey{}, id))
 		sw := &statusWriter{ResponseWriter: w}
 		h := sw.Header()
@@ -63,7 +53,7 @@ func (s *Server) middleware(next http.Handler) http.Handler {
 			if p := recover(); p != nil {
 				s.Log.Error("panic", "request_id", id, "panic", fmt.Sprint(p))
 				if sw.status == 0 {
-					writeError(sw, http.StatusInternalServerError, "INTERNAL", "The gateway hit an internal error.")
+					writeError(sw, r, http.StatusInternalServerError, "INTERNAL", "The gateway hit an unexpected error. Try again, and quote the request ID if it keeps happening.")
 				}
 			}
 			s.Log.Info("request", "request_id", id, "method", r.Method, "path", r.URL.Path, "status", sw.status,

@@ -5,6 +5,11 @@ import { overallConfidence, pct } from '../lib/format.js';
 import { ticketHref } from '../lib/useHashRoute.js';
 import { Sparkles } from 'lucide-react';
 
+const routeText = (r) =>
+  r.fallback_global
+    ? 'The routed queues matched weakly, so precedents came from a search across all queues.'
+    : `Searched inside ${r.searched.join(' and ') || 'the top queue'}.`;
+
 // "Why did the AI decide this?" — opened from the sparkle icon in the dashboard table.
 export default function DetailsModal({ ticket: t, onClose }) {
   const c = t.classification;
@@ -12,7 +17,13 @@ export default function DetailsModal({ ticket: t, onClose }) {
     { k: 'Queue', v: `${c.queue.label} — ${c.queue.votes}/${c.queue.k} nearest precedents agree (${pct(c.queue.confidence)} calibrated).` },
     { k: 'Type', v: `${c.type.label} (${pct(c.type.confidence)}).` },
     { k: 'Priority', v: `${c.priority.label}, P(high) = ${c.priority.p_high.toFixed(2)}.` },
-    { k: 'Precedent', v: `Closest match ${t.precedents[0].ticket_id} at ${t.precedents[0].similarity.toFixed(2)} similarity.` },
+    {
+      k: 'Precedent',
+      v: t.precedents.length
+        ? `Closest match ${t.precedents[0].ticket_id} at ${t.precedents[0].similarity.toFixed(2)} similarity.`
+        : 'No similar ticket in the knowledge base, so the reply is a holding message.',
+    },
+    { k: 'Routing', v: routeText(t.retrieval.route) },
     { k: 'Language', v: `${LANGUAGES[t.language.code] ?? t.language.code} (${pct(t.language.confidence)}).` },
   ];
 

@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -17,11 +18,10 @@ import (
 )
 
 type fakeEngine struct {
-	got  engine.Request
-	res  engine.Result
-	err  error
-	mode string
-	down bool
+	got    engine.Request
+	err    error
+	mode   string
+	health engine.Health
 }
 
 func (f *fakeEngine) Triage(ctx context.Context, req engine.Request) (engine.Result, error) {
@@ -29,26 +29,23 @@ func (f *fakeEngine) Triage(ctx context.Context, req engine.Request) (engine.Res
 	if f.err != nil {
 		return nil, f.err
 	}
-	out := engine.Result{}
-	for k, v := range f.res {
-		out[k] = v
-	}
-	return out, nil
+	return engine.Result{
+		"contract_version": "1.0", "request_id": req.RequestID, "ticket_id": req.TicketID,
+		"subject": req.Subject, "body": req.Body, "gate": map[string]any{"decision": "AUTO_DRAFT"},
+		"latency_ms": map[string]any{"draft": 90.0, "total": 100.0}, "warnings": []any{},
+	}, nil
 }
 
-func (f *fakeEngine) Health(context.Context) error {
-	if f.down {
-		return io.EOF
-	}
-	return nil
-}
+func (f *fakeEngine) Health(context.Context) engine.Health { return f.health }
 
 func (f *fakeEngine) Mode() string {
 	if f.mode == "" {
-		return "engine"
+		return "live"
 	}
 	return f.mode
 }
+
+var reqIDPattern = regexp.MustCompile(`^req_[0-9a-f]{12}$`)
 
 func newServer(t *testing.T, eng engine.Engine) *Server {
 	t.Helper()
@@ -66,45 +63,55 @@ func do(t *testing.T, h http.Handler, method, path, body string) (*httptest.Resp
 	return rec, out
 }
 
-func errCode(out map[string]any) string {
+func errField(out map[string]any, key string) string {
 	e, _ := out["error"].(map[string]any)
-	s, _ := e["code"].(string)
+	s, _ := e[key].(string)
 	return s
 }
 
-func TestTriageMasksPIIBeforeTheEngine(t *testing.T) {
-	f := &fakeEngine{res: engine.Result{"ticket_id": "TKT-1", "gate": map[string]any{"decision": "AUTO_DRAFT"}, "latency_ms": map[string]any{"total": 100.0}}}
+func TestTriageMasksPIIAndAddsGatewayFields(t *testing.T) {
+	f := &fakeEngine{}
 	h := newServer(t, f).Handler()
-	rec, out := do(t, h, "POST", "/api/triage", `{"subject":"Reset for anna@example.com","body":"Call me on +49 30 1234 5678"}`)
+	rec, out := do(t, h, "POST", "/api/v1/triage", `{"subject":"Reset for anna@example.com","body":"I am anna@example.com, call +49 30 1234 5678"}`)
 	if rec.Code != 200 {
 		t.Fatalf("status %d: %s", rec.Code, rec.Body)
 	}
 	if strings.Contains(f.got.Subject+f.got.Body, "anna@") || strings.Contains(f.got.Body, "1234") {
 		t.Fatalf("engine saw raw PII: %+v", f.got)
 	}
-	if out["subject"] != f.got.Subject || out["body"] != f.got.Body {
-		t.Errorf("response should echo the masked text the engine saw, got %v / %v", out["subject"], out["body"])
+	if f.got.Subject != "Reset for [EMAIL_1]" || f.got.Body != "I am [EMAIL_1], call [PHONE_1]" {
+		t.Errorf("engine got %q / %q", f.got.Subject, f.got.Body)
 	}
-	if masked, _ := out["pii"].(map[string]any)["masked"].([]any); len(masked) != 2 {
+	if !reqIDPattern.MatchString(f.got.RequestID) || f.got.RequestID != rec.Header().Get("X-Request-ID") {
+		t.Errorf("request_id = %q, header %q", f.got.RequestID, rec.Header().Get("X-Request-ID"))
+	}
+	if !regexp.MustCompile(`^LIVE-[0-9A-F]{8}$`).MatchString(f.got.TicketID) {
+		t.Errorf("ticket_id = %q", f.got.TicketID)
+	}
+	if !regexp.MustCompile(`^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ$`).MatchString(f.got.CreatedAt) {
+		t.Errorf("created_at = %q", f.got.CreatedAt)
+	}
+	masked, _ := out["pii"].(map[string]any)["masked"].([]any)
+	if len(masked) != 2 || masked[0].(map[string]any)["count"] != 2.0 {
 		t.Errorf("pii.masked = %v", out["pii"])
 	}
 	lat := out["latency_ms"].(map[string]any)
-	if _, ok := lat["gateway"].(float64); !ok || lat["total"].(float64) < 100 {
+	if gw, ok := lat["gateway"].(float64); !ok || lat["total"].(float64) != 100+gw {
 		t.Errorf("latency_ms = %v", lat)
 	}
-	if rec.Header().Get("X-Request-ID") == "" {
-		t.Error("missing X-Request-ID")
+	if out["contract_version"] != "1.0" || out["warnings"] == nil {
+		t.Errorf("engine fields should pass through: %v", out)
 	}
 }
 
-func TestTriageAssignsTicketIDWhenEngineOmitsIt(t *testing.T) {
-	f := &fakeEngine{res: engine.Result{"gate": map[string]any{"decision": "AUTO_DRAFT"}}}
-	_, out := do(t, newServer(t, f).Handler(), "POST", "/api/triage", `{"subject":"hi"}`)
-	if id, _ := out["ticket_id"].(string); !strings.HasPrefix(id, "GW-") {
-		t.Errorf("ticket_id = %v", out["ticket_id"])
+func TestTriageKeepsClientTicketIDAndEmptySubject(t *testing.T) {
+	f := &fakeEngine{}
+	rec, out := do(t, newServer(t, f).Handler(), "POST", "/api/v1/triage", `{"subject":null,"body":"hello","ticket_id":"TKT-77","extra":1}`)
+	if rec.Code != 200 || f.got.TicketID != "TKT-77" || f.got.Subject != "" || out["ticket_id"] != "TKT-77" {
+		t.Errorf("%d ticket=%q subject=%q", rec.Code, f.got.TicketID, f.got.Subject)
 	}
-	if _, ok := out["pii"].(map[string]any)["masked"].([]any); !ok {
-		t.Errorf("pii.masked should be a JSON array, got %v", out["pii"])
+	if masked, ok := out["pii"].(map[string]any)["masked"].([]any); !ok || len(masked) != 0 {
+		t.Errorf("pii.masked should be [], got %v", out["pii"])
 	}
 }
 
@@ -115,20 +122,29 @@ func TestTriageValidation(t *testing.T) {
 		status     int
 		code       string
 	}{
-		{"not json", `hello`, 400, "BAD_JSON"},
-		{"wrong types", `{"subject": 5}`, 400, "BAD_JSON"},
-		{"empty", `{"subject":"  ","body":""}`, 400, "VALIDATION"},
-		{"subject too long", `{"subject":"` + strings.Repeat("a", 301) + `"}`, 400, "VALIDATION"},
-		{"body too long", `{"body":"` + strings.Repeat("ä", 8001) + `"}`, 400, "VALIDATION"},
-		{"request too large", `{"body":"` + strings.Repeat("a", 70<<10) + `"}`, 413, "TOO_LARGE"},
+		{"not json", `hello`, 400, "INVALID_JSON"},
+		{"not an object", `[1,2]`, 422, "VALIDATION_ERROR"},
+		{"wrong type", `{"subject": 5, "body":"x"}`, 422, "VALIDATION_ERROR"},
+		{"missing body", `{"subject":"only a subject"}`, 422, "VALIDATION_ERROR"},
+		{"blank body", `{"body":"  \n "}`, 422, "VALIDATION_ERROR"},
+		{"body too long", `{"body":"` + strings.Repeat("ä", 10_001) + `"}`, 422, "VALIDATION_ERROR"},
+		{"subject too long", `{"subject":"` + strings.Repeat("a", 501) + `","body":"x"}`, 422, "VALIDATION_ERROR"},
+		{"bad ticket id", `{"body":"x","ticket_id":"../etc"}`, 422, "VALIDATION_ERROR"},
+		{"request too large", `{"body":"` + strings.Repeat("a", 70<<10) + `"}`, 413, "PAYLOAD_TOO_LARGE"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			rec, out := do(t, h, "POST", "/api/triage", c.body)
-			if rec.Code != c.status || errCode(out) != c.code {
-				t.Errorf("got %d %q, want %d %q (%s)", rec.Code, errCode(out), c.status, c.code, rec.Body)
+			rec, out := do(t, h, "POST", "/api/v1/triage", c.body)
+			if rec.Code != c.status || errField(out, "code") != c.code {
+				t.Errorf("got %d %q, want %d %q (%s)", rec.Code, errField(out, "code"), c.status, c.code, rec.Body)
+			}
+			if !reqIDPattern.MatchString(errField(out, "request_id")) || errField(out, "message") == "" {
+				t.Errorf("error envelope incomplete: %s", rec.Body)
 			}
 		})
+	}
+	if rec, _ := do(t, h, "POST", "/api/v1/triage", `{"body":"`+strings.Repeat("ä", 10_000)+`"}`); rec.Code != 200 {
+		t.Errorf("10,000 characters is allowed, got %d", rec.Code)
 	}
 }
 
@@ -140,45 +156,70 @@ func TestTriageEngineErrors(t *testing.T) {
 	}{
 		{&engine.Error{Status: 504, Code: "ENGINE_TIMEOUT", Message: "slow"}, 504, "ENGINE_TIMEOUT"},
 		{&engine.Error{Status: 503, Code: "ENGINE_UNAVAILABLE", Message: "down"}, 503, "ENGINE_UNAVAILABLE"},
+		{&engine.Error{Status: 422, Code: "VALIDATION_ERROR", Message: "body: too long"}, 422, "VALIDATION_ERROR"},
 		{io.ErrUnexpectedEOF, 500, "INTERNAL"},
 	}
 	for _, c := range cases {
-		rec, out := do(t, newServer(t, &fakeEngine{err: c.err}).Handler(), "POST", "/api/triage", `{"subject":"x"}`)
-		if rec.Code != c.status || errCode(out) != c.code {
-			t.Errorf("%v: got %d %q", c.err, rec.Code, errCode(out))
+		rec, out := do(t, newServer(t, &fakeEngine{err: c.err}).Handler(), "POST", "/api/v1/triage", `{"body":"x"}`)
+		if rec.Code != c.status || errField(out, "code") != c.code || !reqIDPattern.MatchString(errField(out, "request_id")) {
+			t.Errorf("%v: got %d %s", c.err, rec.Code, rec.Body)
 		}
-		if msg, _ := out["error"].(map[string]any)["message"].(string); msg == "" || strings.Contains(msg, "EOF") {
-			t.Errorf("message should be readable and not leak internals: %q", msg)
+		if strings.Contains(errField(out, "message"), "EOF") {
+			t.Errorf("message leaks internals: %q", errField(out, "message"))
 		}
 	}
 }
 
 func TestRateLimit(t *testing.T) {
-	s := newServer(t, &fakeEngine{res: engine.Result{"ticket_id": "T"}})
+	s := newServer(t, &fakeEngine{})
 	s.Limiter = ratelimit.New(60, 2)
 	h := s.Handler()
 	for i := 0; i < 2; i++ {
-		if rec, _ := do(t, h, "POST", "/api/triage", `{"subject":"x"}`); rec.Code != 200 {
+		if rec, _ := do(t, h, "POST", "/api/v1/triage", `{"body":"x"}`); rec.Code != 200 {
 			t.Fatalf("request %d: %d", i, rec.Code)
 		}
 	}
-	rec, out := do(t, h, "POST", "/api/triage", `{"subject":"x"}`)
-	if rec.Code != 429 || errCode(out) != "RATE_LIMITED" || rec.Header().Get("Retry-After") == "" {
-		t.Errorf("got %d %q retry-after=%q", rec.Code, errCode(out), rec.Header().Get("Retry-After"))
+	rec, out := do(t, h, "POST", "/api/v1/triage", `{"body":"x"}`)
+	if rec.Code != 429 || errField(out, "code") != "RATE_LIMITED" || rec.Header().Get("Retry-After") == "" {
+		t.Errorf("got %d %q retry-after=%q", rec.Code, errField(out, "code"), rec.Header().Get("Retry-After"))
 	}
-	if rec, _ := do(t, h, "GET", "/api/health", ""); rec.Code != 200 {
+	if rec, _ := do(t, h, "GET", "/api/v1/health", ""); rec.Code != 200 {
 		t.Errorf("health should not be rate limited, got %d", rec.Code)
 	}
 }
 
 func TestHealth(t *testing.T) {
-	_, out := do(t, newServer(t, &fakeEngine{mode: "mock"}).Handler(), "GET", "/api/health", "")
-	if out["status"] != "ok" || out["mode"] != "mock" || out["engine"] != "mock" {
-		t.Errorf("mock health = %v", out)
+	cases := []struct {
+		name   string
+		eng    *fakeEngine
+		status string
+		comp   map[string]any
+	}{
+		{"live ok", &fakeEngine{health: engine.Health{Engine: "ok", VectorDB: "ok"}}, "ok", map[string]any{"gateway": "ok", "engine": "ok", "vector_db": "ok"}},
+		{"stub stages", &fakeEngine{health: engine.Health{Engine: "stub", VectorDB: "unknown"}}, "degraded", map[string]any{"gateway": "ok", "engine": "stub", "vector_db": "unknown"}},
+		{"engine down", &fakeEngine{health: engine.Health{Engine: "down", VectorDB: "unknown"}}, "down", map[string]any{"gateway": "ok", "engine": "down", "vector_db": "unknown"}},
+		{"mock", &fakeEngine{mode: "mock", health: engine.Health{Engine: "ok", VectorDB: "ok"}}, "ok", map[string]any{"gateway": "ok", "engine": "stub", "vector_db": "stub"}},
 	}
-	_, out = do(t, newServer(t, &fakeEngine{down: true}).Handler(), "GET", "/api/health", "")
-	if out["status"] != "degraded" || out["engine"] != "down" {
-		t.Errorf("engine-down health = %v", out)
+	for _, c := range cases {
+		rec, out := do(t, newServer(t, c.eng).Handler(), "GET", "/api/v1/health", "")
+		comp, _ := out["components"].(map[string]any)
+		if rec.Code != 200 || out["status"] != c.status || out["mode"] != c.eng.Mode() || out["contract_version"] != "1.0" || len(comp) != 3 {
+			t.Errorf("%s: %d %v", c.name, rec.Code, out)
+		}
+		for k, v := range c.comp {
+			if comp[k] != v {
+				t.Errorf("%s: components.%s = %v, want %v", c.name, k, comp[k], v)
+			}
+		}
+	}
+}
+
+func TestOldPathsAreGone(t *testing.T) {
+	h := newServer(t, &fakeEngine{}).Handler()
+	for _, p := range []string{"/api/triage", "/api/health"} {
+		if rec, out := do(t, h, "GET", p, ""); rec.Code != 404 || !strings.Contains(errField(out, "message"), "/api/v1/") {
+			t.Errorf("%s: %d %s", p, rec.Code, rec.Body)
+		}
 	}
 }
 
@@ -187,10 +228,10 @@ func TestInsights(t *testing.T) {
 	os.WriteFile(filepath.Join(s.InsightsDir, "model_insights.json"), []byte(`{"ok":true}`), 0o644)
 	os.WriteFile(filepath.Join(s.InsightsDir, "secret.json"), []byte(`{"secret":true}`), 0o644)
 	h := s.Handler()
-	if rec, out := do(t, h, "GET", "/api/insights/model", ""); rec.Code != 200 || out["ok"] != true {
+	if rec, out := do(t, h, "GET", "/api/v1/insights/model", ""); rec.Code != 200 || out["ok"] != true {
 		t.Errorf("model: %d %s", rec.Code, rec.Body)
 	}
-	for _, p := range []string{"/api/insights/operations", "/api/insights/secret", "/api/insights/..%2fsecret", "/api/insights/"} {
+	for _, p := range []string{"/api/v1/insights/operations", "/api/v1/insights/secret", "/api/v1/insights/..%2fsecret", "/api/v1/insights/"} {
 		if rec, _ := do(t, h, "GET", p, ""); rec.Code != 404 {
 			t.Errorf("%s: got %d, want 404", p, rec.Code)
 		}
@@ -200,7 +241,7 @@ func TestInsights(t *testing.T) {
 func TestStatic(t *testing.T) {
 	s := newServer(t, &fakeEngine{})
 	h := s.Handler()
-	if rec, out := do(t, h, "GET", "/", ""); rec.Code != 404 || errCode(out) != "NOT_FOUND" {
+	if rec, out := do(t, h, "GET", "/", ""); rec.Code != 404 || errField(out, "code") != "NOT_FOUND" {
 		t.Errorf("unbuilt console: %d %s", rec.Code, rec.Body)
 	}
 	os.WriteFile(filepath.Join(s.StaticDir, "index.html"), []byte("<html>console</html>"), 0o644)
@@ -216,16 +257,36 @@ func TestStatic(t *testing.T) {
 	if !strings.Contains(rec.Header().Get("Cache-Control"), "immutable") {
 		t.Errorf("assets cache = %q", rec.Header().Get("Cache-Control"))
 	}
-	if rec, _ := do(t, h, "GET", "/api/nope", ""); rec.Code != 404 || !strings.Contains(rec.Header().Get("Content-Type"), "json") {
-		t.Errorf("unknown api route: %d %s", rec.Code, rec.Header().Get("Content-Type"))
-	}
 }
 
 func TestPanicIsRecovered(t *testing.T) {
 	s := newServer(t, &fakeEngine{})
 	h := s.middleware(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { panic("boom") }))
 	rec, out := do(t, h, "GET", "/", "")
-	if rec.Code != 500 || errCode(out) != "INTERNAL" {
+	if rec.Code != 500 || errField(out, "code") != "INTERNAL" || !reqIDPattern.MatchString(errField(out, "request_id")) {
 		t.Errorf("got %d %s", rec.Code, rec.Body)
+	}
+}
+
+// The mock end to end: what the console gets in MOCK_ENGINE mode.
+func TestMockModeEndToEnd(t *testing.T) {
+	m := engine.NewMock()
+	m.Delay = nil
+	rec, out := do(t, newServer(t, m).Handler(), "POST", "/api/v1/triage", `{"subject":"VPN ausgefallen","body":"Rückruf an +49 30 1234 5678"}`)
+	if rec.Code != 200 {
+		t.Fatalf("%d %s", rec.Code, rec.Body)
+	}
+	if out["gate"].(map[string]any)["decision"] != "ESCALATE_ONCALL" || out["body"] != "Rückruf an [PHONE_1]" || out["burst"] == nil {
+		t.Errorf("unexpected mock answer: %v / %v", out["gate"], out["body"])
+	}
+	lat := out["latency_ms"].(map[string]any)
+	sum := 0.0
+	for k, v := range lat {
+		if k != "total" {
+			sum += v.(float64)
+		}
+	}
+	if lat["total"].(float64)+0.05 < sum {
+		t.Errorf("total %v < sum of stages %v", lat["total"], sum)
 	}
 }

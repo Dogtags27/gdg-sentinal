@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { analyze, createMasker, detectLanguage, maskPII } from '../src/api/mockEngine.js';
-import { ApiError, normalizeTriage, serverMessage } from '../src/api/normalize.js';
+import { ApiError, describeError, normalizeTriage, serverMessage } from '../src/api/normalize.js';
 import { SAMPLES, OUTAGE_BURST } from '../src/data/samples.js';
 import { buildSeedTickets } from '../src/data/mockTickets.js';
 
@@ -38,7 +38,8 @@ test('outage burst tickets join the cluster and escalate', () => {
     const r = analyze({ ticket_id: 'T', ...s }, { burst: true });
     assert.equal(r.gate.decision, 'ESCALATE_ONCALL', s.subject);
     assert.ok(codes(r).includes('ACTIVE_OUTAGE'), s.subject);
-    assert.equal(r.burst?.cluster_id, 'BURST-VPN-01');
+    assert.equal(r.burst?.cluster_id, 'BURST-VPN-SERVICE');
+    assert.ok(r.burst.ticket_count >= 1 && r.burst.queue && r.burst.lead_term === 'vpn');
   }
 });
 
@@ -104,17 +105,37 @@ test('normalizeTriage fills optional fields so views never crash', () => {
   assert.ok(n.created_at && n.language.code);
 });
 
-test('routing path: one confident queue, two otherwise, global fallback when the match is weak', () => {
+test('retrieval.route: one confident queue, two otherwise, all queues when the match is weak', () => {
   const pw = analyze({ ticket_id: 'T1', subject: 'Password reset', body: 'I forgot my password, please help' });
-  assert.equal(pw.routing.queues.length, 1);
-  assert.equal(pw.routing.fallback_global, false);
-  const vague = analyze({ subject: 'Question about something', body: 'Hi there, quick question.' });
-  assert.equal(vague.routing.fallback_global, true);
-  assert.ok(vague.routing.queues.length >= 1);
+  assert.equal(pw.retrieval.route.queues.length, 3);
+  assert.deepEqual(pw.retrieval.route.searched, ['IT Support']);
+  assert.equal(pw.retrieval.route.fallback_global, false);
+  assert.equal(pw.retrieval.top_similarity, pw.precedents[0].similarity);
+  const vague = analyze({ ticket_id: 'T2', subject: 'Question about something', body: 'Hi there, quick question.' });
+  assert.equal(vague.retrieval.route.fallback_global, true);
+  assert.deepEqual(vague.retrieval.route.searched, []);
 
-  const n = normalizeTriage({ ...pw, routing: { queues: [{ queue: 'IT Support', score: 'x' }, null], fallback_global: 'yes' } });
-  assert.deepEqual(n.routing, { queues: [{ queue: 'IT Support', score: null }], fallback_global: false });
-  assert.deepEqual(normalizeTriage({ ...pw, routing: undefined }).routing, { queues: [], fallback_global: false });
+  const n = normalizeTriage({ ...pw, retrieval: { route: { queues: [{ queue: 'IT Support', score: 'x' }, null], searched: ['IT Support'], fallback_global: 'yes' } } });
+  assert.deepEqual(n.retrieval.route, { queues: [{ queue: 'IT Support', score: null }], searched: ['IT Support'], fallback_global: false });
+  assert.deepEqual(normalizeTriage({ ...pw, retrieval: undefined }).retrieval.route, { queues: [], searched: [], fallback_global: false });
+});
+
+test('contract v1 fields the console reads: holding mode, empty precedents, warnings, request_id', () => {
+  const base = analyze({ ticket_id: 'T3', subject: 'x', body: 'y' });
+  const holding = normalizeTriage({
+    ...base,
+    precedents: [],
+    retrieval: { route: { queues: [], searched: [], fallback_global: true }, top_similarity: 0, k: 5 },
+    draft: { ...base.draft, mode: 'holding', citations: [] },
+    warnings: [{ stage: 'draft', code: 'STUB', message: 'draft stage is a stub' }, { nope: 1 }],
+  });
+  assert.equal(holding.draft.mode, 'holding');
+  assert.deepEqual(holding.precedents, []);
+  assert.equal(holding.retrieval.top_similarity, 0);
+  assert.deepEqual(holding.warnings, [{ stage: 'draft', code: 'STUB', message: 'draft stage is a stub' }]);
+  assert.match(holding.request_id, /^req_[0-9a-f]{12}$/);
+  assert.equal(normalizeTriage({ ...base, draft: { ...base.draft, mode: 'weird' } }).draft.mode, 'generated');
+  assert.equal(describeError(new ApiError('Engine timed out.', { requestId: 'req_0123456789ab' })), 'Engine timed out. (request req_0123456789ab)');
 });
 
 test('serverMessage reads gateway and FastAPI error shapes', () => {

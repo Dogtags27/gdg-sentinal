@@ -31,19 +31,17 @@ URL instead, the gateway must allow CORS from the console's origin.
 |---|---|---|
 | `#/` | Triage dashboard: KPIs, tabs (Needs action / Escalated / Auto-drafted / Accepted / Rejected / Degraded), sortable table, accept/reject suggestions, bulk actions, "why" details modal | FS-04, FS-07 |
 | `#/board` | Kanban board: Incoming → Escalated → Human review → Draft ready → Resolved, drag-and-drop plus a keyboard "move" menu | FS-07 |
-| `#/ticket/:id` | Ticket detail: triage suggestions with Apply, escalation gate reasons, text-only draft with citation chips and validation, precedents with the routing path, latency strip, PII summary | FS-09, FS-10, FS-11 |
+| `#/ticket/:id` | Ticket detail: triage suggestions with Apply, escalation gate reasons, text-only draft with citation chips and validation, precedents with answer snippets and the routing path (`retrieval.route`), top-3 class probabilities, holding / extractive / generated drafts, warnings, request ID, latency strip, PII summary | FS-09, FS-10, FS-11 |
 | `#/insights` | Insights shell (`pages/InsightsPage.jsx`): live session charts plus the Data analyst's dataset and model view (`features/insights/InsightsTab.jsx`, DA-07). Shared chart components are in `components/charts/` | FS-18 |
 | `+` in top bar | New ticket form with sample menu (demo scenarios) | FS-05 |
 | Clock in top bar | History drawer | FS-14 |
 | "Simulate outage" | Burst of VPN tickets → major-incident banner | FS-13 |
 
-## API (provisional, until `contracts/` v1 is frozen)
+## API
 
-All network calls are in `src/api/client.js` (timeouts plus readable `ApiError` messages, FS-06); responses are checked in
-`src/api/normalize.js` so a missing or renamed field shows an error instead of a blank view.
-
-- `GET /api/health` → `{ status: "ok", ... }`
-- `POST /api/triage` with `{ subject, body }` → a `TriageResult`. The shape the UI reads is produced by `analyze()` in `mockEngine.js`: `language`, `classification.{type,queue,priority}`, `precedents[]`, `gate.{decision,reasons[]}`, `draft.{text,citations,mode,validation}`, `latency_ms`, `pii.masked`, and optionally
-  `routing.{queues[{queue,score}],fallback_global}` for the hierarchical retrieval path (FS-09).
-
-When the contract lands, adapt it in `client.js` and keep field names in `lib/constants.js`.
+The console follows the frozen contract in [`contracts/README.md`](../contracts/README.md) (v1):
+`POST /api/v1/triage` with `{subject?, body, ticket_id?}` and `GET /api/v1/health`. All network calls are in
+`src/api/client.js` (timeouts plus readable `ApiError` messages that carry the `request_id`, FS-06);
+`src/api/normalize.js` checks each TriageResponse so a missing field shows an error instead of a blank view.
+The browser mock (`src/api/mockEngine.js`) returns the same TriageResponse shape; its output passes the
+engine's contract checks (`engine/app/schemas.py`, `engine/app/contract_rules.py`).

@@ -10,7 +10,8 @@ const NAV = [
   { page: 'insights', href: '#/insights', label: 'Insights' },
 ];
 
-// FS-04 — polls the gateway health endpoint.
+// FS-04 — polls GET /api/v1/health. The gateway always answers 200 with status ok | degraded | down
+// (down = the engine is unreachable); a failed request means the gateway itself is down.
 function useHealth() {
   const [h, setH] = useState({ state: 'checking' });
   useEffect(() => {
@@ -18,7 +19,8 @@ function useHealth() {
     const check = async () => {
       try {
         const res = await api.health();
-        if (alive) setH({ state: res?.status === 'ok' ? 'ok' : 'degraded', detail: res });
+        const state = { ok: 'ok', degraded: 'degraded', down: 'engineDown' }[res?.status] ?? 'degraded';
+        if (alive) setH({ state, detail: res });
       } catch (e) {
         if (alive) setH({ state: 'down', error: e.message });
       }
@@ -35,15 +37,19 @@ function useHealth() {
 
 function HealthDot() {
   const h = useHealth();
-  const tone = { checking: 'bg-slate-300', ok: 'bg-emerald-400', degraded: 'bg-amber-400', down: 'bg-red-500' }[h.state];
+  const tone = { checking: 'bg-slate-300', ok: 'bg-emerald-400', degraded: 'bg-amber-400', engineDown: 'bg-red-500', down: 'bg-red-500' }[h.state];
   const gatewayMock = h.detail?.mode === 'mock';
   const label = {
     checking: 'Checking…',
-    ok: USE_MOCK ? 'Mock engine' : gatewayMock ? 'Gateway · mock engine' : 'Gateway up',
-    degraded: 'Engine down',
+    ok: USE_MOCK ? 'Mock engine' : gatewayMock ? 'Gateway · mock engine' : 'Live',
+    degraded: 'Degraded',
+    engineDown: 'Engine down',
     down: 'Gateway down',
   }[h.state];
-  const title = h.error || (h.detail ? Object.entries(h.detail).map(([k, v]) => `${k}: ${v}`).join(' · ') : label);
+  const components = h.detail?.components ?? {};
+  const title =
+    h.error ||
+    [`mode: ${h.detail?.mode ?? '?'}`, ...Object.entries(components).map(([k, v]) => `${k.replace('_', ' ')}: ${v}`)].join(' · ');
   return (
     <span title={title} className="flex items-center gap-1.5 rounded bg-white/10 px-2 py-1 text-[11.5px] text-white/90">
       <span className={`h-2 w-2 rounded-full ${tone}`} />

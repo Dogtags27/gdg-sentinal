@@ -1,8 +1,8 @@
-// In-browser stand-in for gateway + engine so the console is never blocked (pairs with H-06).
+// In-browser stand-in for gateway + engine so the console is never blocked (the gateway has its own, FS-03).
 // Deterministic: the same subject/body always produces the same result.
-// Shapes here are the PROVISIONAL TriageResult — reconcile with contracts/ once H-02 lands.
+// Results follow contract v1 (contracts/README.md, TriageResponse).
 
-import { GATE_THRESHOLDS, REASONS } from '../lib/constants.js';
+import { GATE_THRESHOLDS, QUEUES, REASONS } from '../lib/constants.js';
 
 const { precedentSimilarity: SIM_THRESHOLD, confidenceFloor: CONF_FLOOR, highPriority: P_HIGH_THRESHOLD } = GATE_THRESHOLDS;
 
@@ -120,9 +120,27 @@ const BODY = {
     general: 'vielen Dank für Ihre Nachricht. Wir haben Ihre Anfrage erhalten und ein Teammitglied kümmert sich darum [c0]. Weitere Details wie Screenshots helfen uns, schneller zu antworten [c1].',
   },
 };
+// Extractive replies quote exactly one precedent (contract v1, "Draft modes").
 const FALLBACK = {
-  en: 'Thank you for your message. Similar tickets were resolved as described in [c0] and [c1]. An agent will review and complete this reply.',
-  de: 'vielen Dank für Ihre Nachricht. Ähnliche Tickets wurden wie in [c0] und [c1] beschrieben gelöst. Ein Mitarbeiter prüft und ergänzt diese Antwort.',
+  en: 'Thank you for your message. A similar ticket was resolved as described in [c0]. An agent will review and complete this reply.',
+  de: 'vielen Dank für Ihre Nachricht. Ein ähnliches Ticket wurde wie in [c0] beschrieben gelöst. Ein Mitarbeiter prüft und ergänzt diese Antwort.',
+};
+
+// First lines of the historical agent answers shown as precedents[].answer_snippet.
+const ANSWERS = {
+  security: 'We isolated the affected server, restored the files from the last clean backup and reset all admin credentials.',
+  outage: 'The VPN concentrator had stopped accepting new sessions. We failed over to the standby node and all sites reconnected.',
+  money: 'The billing team reviewed the account and replied with the outcome; no refund was promised in the first response.',
+  legal: 'The request was forwarded to the data protection officer, who confirmed the deletion in writing within the legal deadline.',
+  billing: 'Invoices are available under Account → Billing. We reissued the invoice with the corrected VAT number.',
+  password: 'After verifying the account owner we triggered a manual password reset and the customer could sign in again.',
+  feature: 'Logged with the product team as a feature request; the customer was told there is no committed timeline.',
+  product: 'Updating to the latest version and clearing the local cache resolved the crash for this customer.',
+  general: 'We answered the question and pointed the customer to the relevant help-centre article.',
+};
+const TAGS = {
+  security: ['security', 'incident'], outage: ['vpn', 'network', 'outage'], money: ['refund', 'billing'], legal: ['gdpr', 'privacy'],
+  billing: ['invoice', 'billing'], password: ['password', 'account'], feature: ['feature', 'product'], product: ['crash', 'update'], general: ['general'],
 };
 
 // ---------- gateway PII masking (mirrors backend/internal/pii; shared cases in its testdata/cases.json) ----------
@@ -216,51 +234,64 @@ export function maskPII(text) {
  */
 export function analyze(input, ctx = {}) {
   const o = ctx.overrides || {};
-  const r = mulberry32(hash(`${input.subject}\n${input.body}`));
+  const r = mulberry32(hash(`${input.subject ?? ''}\n${input.body}`));
   const masker = createMasker();
-  const subject = { text: masker.mask(input.subject) };
-  const body = { text: masker.mask(input.body) };
-  const text = `${subject.text}\n${body.text}`;
+  const subject = masker.mask(input.subject ?? '');
+  const body = masker.mask(input.body);
+  const text = `${subject}\n${body}`;
 
   // language
-  const language = detectLanguage(text);
-  const draftLang = language.code === 'de' ? 'de' : 'en';
+  const detected = detectLanguage(text);
+  const language = { ...detected, supported: SUPPORTED.includes(detected.code) };
+  const draftLang = language.supported ? language.code : 'en';
 
   // category + flags
   const hits = Object.fromEntries(Object.keys(KW).map((g) => [g, firstHit(g, text)]));
   const category = o.category || CATEGORY_ORDER.find((c) => hits[c]) || 'general';
   const p = PROFILE[category];
 
-  // classify (calibrated confidences, jittered deterministically)
+  // classify: each head's confidence is probs[label], as the contract requires
   const confBase = o.confidence ?? p.conf;
   const pHigh = round2(Math.min(0.98, Math.max(0.02, p.pHigh + between(r, -0.04, 0.04))));
   const priorityLabel = o.priority || (pHigh >= P_HIGH_THRESHOLD ? 'high' : p.priority);
   const k = 5;
+  const typeLabel = o.type || p.type;
+  const queueLabel = o.queue || p.queue;
+  const typeProbs = spread(typeLabel, round2(Math.min(0.99, confBase + between(r, 0, 0.06))), TYPES);
+  const queueProbs = spread(queueLabel, round2(Math.min(0.99, confBase + between(r, -0.05, 0.02))), queueOrder(queueLabel).slice(0, 5), 0.93);
+  const priorityProbs = priorityLabel === 'high'
+    ? { high: pHigh, ...splitRest(['medium', 'low'], 1 - pHigh) }
+    : { high: pHigh, [priorityLabel]: round2((1 - pHigh) * 0.8), [priorityLabel === 'medium' ? 'low' : 'medium']: round2(1 - pHigh - round2((1 - pHigh) * 0.8)) };
   const strong = confBase >= 0.75;
   const classification = {
-    type: { label: o.type || p.type, confidence: round2(Math.min(0.99, confBase + between(r, 0, 0.06))) },
-    queue: { label: o.queue || p.queue, confidence: round2(Math.min(0.99, confBase + between(r, -0.05, 0.02))), votes: strong ? 4 + Math.round(r()) : 2 + Math.round(r()), k },
-    priority: { label: priorityLabel, confidence: round2(Math.min(0.99, confBase + between(r, -0.06, 0.03))), p_high: pHigh },
+    type: { label: typeLabel, confidence: typeProbs[typeLabel], probs: typeProbs },
+    queue: { label: queueLabel, confidence: queueProbs[queueLabel], probs: queueProbs, votes: strong ? 4 + Math.round(r()) : 2 + Math.round(r()), k },
+    priority: { label: priorityLabel, confidence: priorityProbs[priorityLabel], probs: priorityProbs, p_high: pHigh },
   };
 
-  // retrieve
+  // retrieve: level 1 routes to the top queue (or top two when unsure), level 2 searches inside them
   const top = Math.min(0.97, (o.similarity ?? p.sim) + between(r, -0.03, 0.03));
   const precedents = BANK[category].map(([id, subj, lang], i) => ({
     ticket_id: id,
-    subject: subj,
-    language: lang,
     similarity: round2(top - i * between(r, 0.03, 0.07)),
+    language: lang,
     type: p.type,
     queue: p.queue,
     priority: p.priority,
+    subject: subj,
+    answer_snippet: i === 0 ? ANSWERS[category] : 'Resolved after the customer confirmed the suggested steps worked.',
+    tags: TAGS[category],
   }));
+  const route = routeQueues(queueLabel, classification.queue.confidence, top, precedents[0].similarity);
+  const retrieval = { route, top_similarity: precedents[0].similarity, k };
 
   // gate
   const reasons = [];
   const add = (code, detail) => reasons.push({ code, severity: REASONS[code].severity, detail });
   if (classification.type.label === 'Incident' && pHigh >= P_HIGH_THRESHOLD) add('HIGH_PRIORITY_INCIDENT', `P(high) = ${pHigh.toFixed(2)} ≥ threshold ${P_HIGH_THRESHOLD}`);
   if (hits.security) add('SECURITY_INCIDENT', `Matched “${hits.security}”`);
-  if (ctx.burst && category === 'outage') add('ACTIVE_OUTAGE', 'Joined burst cluster BURST-VPN-01');
+  const burst = ctx.burst && category === 'outage' ? joinBurst(queueLabel) : null;
+  if (burst) add('ACTIVE_OUTAGE', `Joined burst cluster ${burst.cluster_id} (${burst.ticket_count} tickets)`);
   if (hits.legal) add('LEGAL_OR_COMPLIANCE', `Matched “${hits.legal}”`);
   if (hits.injection) add('PROMPT_INJECTION', `Matched “${hits.injection}”`);
   if (precedents[0].similarity < SIM_THRESHOLD) add('NO_PRECEDENT', `Top-1 similarity ${precedents[0].similarity.toFixed(2)} < ${SIM_THRESHOLD}`);
@@ -268,7 +299,7 @@ export function analyze(input, ctx = {}) {
   if (minConf < CONF_FLOOR) add('LOW_CONFIDENCE', `Calibrated confidence ${minConf.toFixed(2)} < floor ${CONF_FLOOR}`);
   if (hits.money) add('UNSUPPORTED_REQUEST', `Matched “${hits.money}” — no commitments in draft`);
   if (o.ungrounded) add('UNGROUNDED_DRAFT', 'Claim “within 2 business days” not found in cited precedents after retry');
-  if (!['en', 'de'].includes(language.code)) add('UNSUPPORTED_LANGUAGE', `Detected ${language.code.toUpperCase()} (${Math.round(language.confidence * 100)}%)`);
+  if (!language.supported) add('UNSUPPORTED_LANGUAGE', `Detected ${language.code.toUpperCase()} (${Math.round(language.confidence * 100)}%)`);
   if (o.degraded) add('ENGINE_DEGRADED', 'Gemini timed out after 8 s — extractive fallback used');
 
   const decision = reasons.some((x) => x.severity === 'P1') ? 'ESCALATE_ONCALL' : reasons.length ? 'HUMAN_REVIEW' : 'AUTO_DRAFT';
@@ -283,45 +314,70 @@ export function analyze(input, ctx = {}) {
   const draft = {
     language: draftLang,
     text: draftText,
-    citations: [c0, c1],
+    citations: o.degraded ? [c0] : [c0, c1],
     mode: o.degraded ? 'extractive' : 'generated',
     validation: o.ungrounded
-      ? { passed: false, citations_ok: true, numbers_ok: false, retries: 1, issues: ['“2 business days” is not supported by any cited precedent'] }
-      : { passed: true, citations_ok: true, numbers_ok: true, retries: 0, issues: [] },
+      ? { passed: false, citations_ok: true, numbers_ok: false, language_ok: true, retries: 1, issues: ['“2 business days” is not supported by any cited precedent.'] }
+      : { passed: true, citations_ok: true, numbers_ok: true, language_ok: true, retries: 0, issues: [] },
   };
 
   // latency (ms)
   const latency = {
-    gateway: between(r, 3, 9),
-    language: between(r, 2, 6),
-    classify: between(r, 12, 28),
-    retrieve: between(r, 38, 95),
-    gate: between(r, 1, 3),
-    draft: o.degraded ? 8000 + between(r, 20, 60) : between(r, 650, 1750),
-    validate: between(r, 14, 42),
+    gateway: round1(between(r, 3, 9)),
+    language: round1(between(r, 2, 6)),
+    classify: round1(between(r, 12, 28)),
+    retrieve: round1(between(r, 90, 180)),
+    gate: round1(between(r, 1, 3)),
+    draft: round1(o.degraded ? 8000 + between(r, 20, 60) : between(r, 650, 1750)),
+    validate: round1(between(r, 14, 42)),
   };
-  latency.total = Object.values(latency).reduce((a, b) => a + b, 0);
+  latency.total = round1(Object.values(latency).reduce((a, b) => a + b, 0) + 1);
 
+  const createdAt = input.created_at || new Date().toISOString();
   return {
+    contract_version: '1.0',
+    request_id: input.request_id || `req_${hex(6)}`,
     ticket_id: input.ticket_id,
-    subject: subject.text,
-    body: body.text,
-    created_at: input.created_at || new Date().toISOString(),
-    processed_at: new Date().toISOString(),
+    subject,
+    body,
+    created_at: createdAt,
+    processed_at: new Date(Math.max(Date.now(), Date.parse(createdAt))).toISOString(),
     language,
+    pii: { masked: masker.entities() },
     classification,
+    retrieval,
     precedents,
     gate: { decision, reasons },
     draft,
+    burst,
     latency_ms: latency,
-    pii: { masked: masker.entities() },
-    routing: route(p.queue, classification.queue.confidence, top, precedents[0].similarity),
-    burst: ctx.burst && category === 'outage' ? { cluster_id: 'BURST-VPN-01' } : null,
+    warnings: o.degraded ? [{ stage: 'draft', code: 'LLM_TIMEOUT', message: 'The LLM did not answer within 8 s; the reply quotes the best precedent instead.' }] : [],
   };
 }
 
-// Level 1 of the hierarchical retrieval (root README): score = 0.6 × classifier + 0.4 × centroid cosine,
-// keep only the top queue when it scores at least 0.80, else the top two. Mirrors the Go mock.
+const SUPPORTED = ['en', 'de'];
+const TYPES = ['Incident', 'Request', 'Problem', 'Change'];
+
+// Gives label its probability and spreads `mass` of the rest over the other keys, largest first.
+function spread(label, p, keys, mass = 1) {
+  const others = keys.filter((x) => x !== label);
+  return { [label]: p, ...splitRest(others, Math.max(0, mass - p)) };
+}
+function splitRest(keys, rest) {
+  const weights = keys.map((_, i) => 2 ** (keys.length - i));
+  const sum = weights.reduce((a, b) => a + b, 0);
+  const out = {};
+  let left = round2(rest);
+  keys.forEach((key, i) => {
+    const v = i === keys.length - 1 ? left : round2((rest * weights[i]) / sum);
+    out[key] = Math.max(0, round2(v));
+    left = round2(left - out[key]);
+  });
+  return out;
+}
+
+// Level 1 of the hierarchical retrieval (root README): keep the top queue when it scores at least 0.80,
+// else search the top two. route.queues holds the top 3 level-1 scores.
 const RUNNER_UP = {
   'Service Outages and Maintenance': 'IT Support',
   'IT Support': 'Technical Support',
@@ -331,30 +387,52 @@ const RUNNER_UP = {
   'Technical Support': 'Product Support',
   'General Inquiry': 'Customer Service',
 };
-function route(queue, queueConf, top, top1) {
-  const score = round2(0.6 * queueConf + 0.4 * top);
-  const queues = [{ queue, score }];
-  if (score < 0.8 && RUNNER_UP[queue]) queues.push({ queue: RUNNER_UP[queue], score: round2(score * 0.7) });
-  return { queues, fallback_global: top1 < SIM_THRESHOLD };
+function queueOrder(label) {
+  const second = RUNNER_UP[label];
+  return [label, ...(second ? [second] : []), ...QUEUES.filter((x) => x !== label && x !== second)];
+}
+function routeQueues(label, queueConf, top, top1) {
+  const first = round2(0.6 * queueConf + 0.4 * top);
+  const [, second, third] = queueOrder(label);
+  const queues = [
+    { queue: label, score: first },
+    { queue: second, score: round2(first * 0.45) },
+    { queue: third, score: round2(first * 0.12) },
+  ];
+  const fallback = top1 < SIM_THRESHOLD;
+  const searched = first >= 0.8 ? [label] : [label, second];
+  return { queues, searched: fallback ? [] : searched, fallback_global: fallback };
 }
 
+// Session-wide outage cluster for "Simulate outage", shaped like contract v1's burst object.
+let burstState = null;
+function joinBurst(queue) {
+  const now = new Date().toISOString();
+  burstState = burstState
+    ? { ...burstState, ticket_count: burstState.ticket_count + 1, last_seen: now }
+    : { cluster_id: 'BURST-VPN-SERVICE', queue, lead_term: 'vpn', ticket_count: 1, first_seen: now, last_seen: now };
+  return { ...burstState };
+}
+
+const round1 = (x) => Math.round(x * 10) / 10;
+const hex = (bytes) => Array.from({ length: bytes * 2 }, () => Math.floor(Math.random() * 16).toString(16)).join('');
+
 // ---------- fake transport ----------
-let liveCounter = 1;
 const sleep = (n) => new Promise((res) => setTimeout(res, n));
 
 export const mockApi = {
   async health() {
     await sleep(120);
-    return { status: 'ok', mode: 'mock', engine: 'mock', qdrant: 'mock' };
+    return { status: 'ok', mode: 'mock', contract_version: '1.0', components: { gateway: 'stub', engine: 'stub', vector_db: 'stub' } };
   },
   async triage(input, { burst = false } = {}) {
-    if (!input.subject?.trim() && !input.body?.trim()) {
-      const e = new Error('Subject or body is required.');
-      e.code = 'VALIDATION';
+    if (!input.body?.trim()) {
+      const e = new Error('body: must be 1 to 10,000 characters and not only whitespace.');
+      e.code = 'VALIDATION_ERROR';
       throw e;
     }
     await sleep(500 + Math.random() * 700);
-    const id = input.ticket_id || `LIVE-${String(liveCounter++).padStart(4, '0')}`;
+    const id = input.ticket_id || `LIVE-${hex(4).toUpperCase()}`;
     return analyze({ ...input, ticket_id: id }, { burst });
   },
 };

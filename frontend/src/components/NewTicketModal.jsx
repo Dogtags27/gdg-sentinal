@@ -4,8 +4,9 @@ import Modal from './Modal.jsx';
 import { SAMPLES } from '../data/samples.js';
 import { useTickets } from '../state/tickets.jsx';
 import { go, ticketHref } from '../lib/useHashRoute.js';
+import { describeError } from '../api/normalize.js';
 
-const MAX_BODY = 8000;
+const MAX_BODY = 10_000; // contract v1
 
 // FS-05 — ticket input with a sample menu.
 export default function NewTicketModal({ onClose }) {
@@ -43,15 +44,15 @@ export default function NewTicketModal({ onClose }) {
 
   const submit = async (e) => {
     e.preventDefault();
-    if (!subject.trim() && !body.trim()) return setError('Add a subject or a body first.');
+    if (!body.trim()) return setError('Add the ticket body. The subject is optional.');
     setBusy(true);
     setError(null);
     try {
-      const t = await triage({ subject: subject.trim(), body: body.trim() });
+      const t = await triage({ subject: subject.trim(), body });
       onClose();
       go(ticketHref(t.ticket_id));
     } catch (err) {
-      setError(err.message);
+      setError(describeError(err));
     } finally {
       setBusy(false);
     }
@@ -84,28 +85,29 @@ export default function NewTicketModal({ onClose }) {
         </div>
 
         <label className="block">
-          <span className="mb-1 block text-[12px] font-medium text-ink-2">Subject</span>
+          <span className="mb-1 block text-[12px] font-medium text-ink-2">Subject <span className="font-normal text-ink-3">(optional)</span></span>
           <input
             value={subject}
             onChange={(e) => setSubject(e.target.value)}
-            maxLength={300}
+            maxLength={500}
             className="w-full rounded border border-line px-2.5 py-1.5 text-[13px] outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-100"
             placeholder="e.g. VPN not reachable since this morning"
           />
         </label>
         <label className="block">
           <span className="mb-1 flex justify-between text-[12px] font-medium text-ink-2">
-            Body <span className="tabular font-normal text-ink-3">{body.length}/{MAX_BODY}</span>
+            <span>Body <span className="text-red-700" aria-hidden>*</span></span> <span className="tabular font-normal text-ink-3">{body.length}/{MAX_BODY}</span>
           </span>
           <textarea
             value={body}
             onChange={(e) => setBody(e.target.value.slice(0, MAX_BODY))}
             rows={7}
+            required
             className="w-full resize-y rounded border border-line px-2.5 py-1.5 text-[13px] leading-relaxed outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-100"
             placeholder="Paste the customer's message (English or German)…"
           />
         </label>
-        <p className="text-[11.5px] text-ink-3">Emails, phone numbers and IBANs are masked by the gateway before the engine sees them.</p>
+        <p className="text-[11.5px] text-ink-3">Emails, phone numbers, IBANs, card and account numbers and IP addresses are masked by the gateway before the engine sees them.</p>
 
         {error && (
           <div role="alert" className="flex items-start gap-2 rounded border border-red-200 bg-red-50 px-3 py-2 text-[12.5px] text-red-800">

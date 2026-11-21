@@ -8,13 +8,13 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 )
 
-// Paths on the Python engine. PROVISIONAL until contracts/ v1 (H-02).
 const (
-	triagePath = "/triage"
-	healthPath = "/health"
+	triagePath = "/v1/triage"
+	healthPath = "/healthz"
 	maxReply   = 2 << 20
 )
 
@@ -29,7 +29,7 @@ func NewClient(baseURL string, timeout time.Duration) *Client {
 	return &Client{base: baseURL, timeout: timeout, http: &http.Client{}}
 }
 
-func (c *Client) Mode() string { return "engine" }
+func (c *Client) Mode() string { return "live" }
 
 func (c *Client) Triage(ctx context.Context, req Request) (Result, error) {
 	ctx, cancel := context.WithTimeout(ctx, c.timeout)
@@ -52,86 +52,89 @@ func (c *Client) Triage(ctx context.Context, req Request) (Result, error) {
 	if err != nil {
 		return nil, c.transportError(ctx, err)
 	}
-	if res.StatusCode < 200 || res.StatusCode > 299 {
-		return nil, &Error{
-			Status:  http.StatusBadGateway,
-			Code:    "ENGINE_ERROR",
-			Message: fmt.Sprintf("The triage engine failed (%d): %s", res.StatusCode, engineMessage(raw)),
+
+	if res.StatusCode != http.StatusOK {
+		// The engine's own error envelope passes through with its status (contract "Errors").
+		var env struct {
+			Error struct {
+				Code    string `json:"code"`
+				Message string `json:"message"`
+			} `json:"error"`
 		}
+		if json.Unmarshal(raw, &env) == nil && env.Error.Code != "" && env.Error.Message != "" {
+			return nil, &Error{Status: res.StatusCode, Code: env.Error.Code, Message: env.Error.Message}
+		}
+		return nil, badResponse(fmt.Errorf("status %d without an error envelope", res.StatusCode))
 	}
+
 	var out Result
 	if err := json.Unmarshal(raw, &out); err != nil || out == nil {
-		return nil, &Error{Status: http.StatusBadGateway, Code: "ENGINE_BAD_RESPONSE", Message: "The triage engine sent a response that is not a JSON object.", Err: err}
+		return nil, badResponse(err)
+	}
+	if err := looksLikeContract(out, req); err != nil {
+		return nil, badResponse(err)
 	}
 	return out, nil
 }
 
-func (c *Client) Health(ctx context.Context) error {
-	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
-	defer cancel()
-	hr, err := http.NewRequestWithContext(ctx, http.MethodGet, c.base+healthPath, nil)
-	if err != nil {
-		return err
+// looksLikeContract is a cheap shape check; the engine validates the full contract itself.
+func looksLikeContract(r Result, req Request) error {
+	if v, _ := r["contract_version"].(string); !strings.HasPrefix(v, "1.") {
+		return errors.New("contract_version is not 1.x")
 	}
-	res, err := c.http.Do(hr)
-	if err != nil {
-		return err
+	if r["request_id"] != req.RequestID || r["ticket_id"] != req.TicketID {
+		return errors.New("request_id or ticket_id not echoed")
 	}
-	defer res.Body.Close()
-	io.Copy(io.Discard, io.LimitReader(res.Body, 64<<10))
-	if res.StatusCode != http.StatusOK {
-		return fmt.Errorf("engine health returned %d", res.StatusCode)
+	if gate, _ := r["gate"].(map[string]any); gate == nil || gate["decision"] == nil {
+		return errors.New("gate.decision missing")
+	}
+	lat, _ := r["latency_ms"].(map[string]any)
+	if _, ok := lat["total"].(float64); !ok {
+		return errors.New("latency_ms.total missing")
 	}
 	return nil
 }
 
+func badResponse(err error) error {
+	return &Error{Status: http.StatusBadGateway, Code: "ENGINE_BAD_RESPONSE", Message: "The triage engine sent a response the console can't use. Try again, or check the engine logs.", Err: err}
+}
+
+func (c *Client) Health(ctx context.Context) Health {
+	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+	down := Health{Engine: "down", VectorDB: "unknown"}
+	hr, err := http.NewRequestWithContext(ctx, http.MethodGet, c.base+healthPath, nil)
+	if err != nil {
+		return down
+	}
+	res, err := c.http.Do(hr)
+	if err != nil {
+		return down
+	}
+	defer res.Body.Close()
+	var body struct {
+		Status     string            `json:"status"`
+		Components map[string]string `json:"components"`
+	}
+	if res.StatusCode != http.StatusOK || json.NewDecoder(io.LimitReader(res.Body, 64<<10)).Decode(&body) != nil {
+		return down
+	}
+	h := Health{Engine: "ok", VectorDB: body.Components["vector_db"]}
+	if body.Status != "ok" {
+		h.Engine = "stub"
+	}
+	if h.VectorDB == "" {
+		h.VectorDB = "unknown"
+	}
+	return h
+}
+
 func (c *Client) transportError(ctx context.Context, err error) error {
 	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
-		return &Error{Status: http.StatusGatewayTimeout, Code: "ENGINE_TIMEOUT", Message: fmt.Sprintf("The triage engine did not answer within %s.", c.timeout), Err: err}
+		return &Error{Status: http.StatusGatewayTimeout, Code: "ENGINE_TIMEOUT", Message: fmt.Sprintf("The triage engine didn't answer within %d seconds. Try again in a moment.", int(c.timeout.Seconds())), Err: err}
 	}
 	if errors.Is(ctx.Err(), context.Canceled) {
-		return &Error{Status: 499, Code: "CANCELLED", Message: "The request was cancelled.", Err: err}
+		return &Error{Status: 499, Code: "INTERNAL", Message: "The request was cancelled.", Err: err}
 	}
-	return &Error{Status: http.StatusServiceUnavailable, Code: "ENGINE_UNAVAILABLE", Message: "The triage engine is not reachable right now.", Err: err}
-}
-
-// engineMessage pulls a readable message out of FastAPI ({"detail": ...}) or gateway-style errors.
-func engineMessage(raw []byte) string {
-	var v struct {
-		Detail any `json:"detail"`
-		Error  struct {
-			Message string `json:"message"`
-		} `json:"error"`
-	}
-	if json.Unmarshal(raw, &v) == nil {
-		switch d := v.Detail.(type) {
-		case string:
-			return d
-		case []any:
-			if m, ok := firstMsg(d); ok {
-				return m
-			}
-		}
-		if v.Error.Message != "" {
-			return v.Error.Message
-		}
-	}
-	if len(raw) == 0 {
-		return "no details"
-	}
-	if len(raw) > 200 {
-		raw = raw[:200]
-	}
-	return string(raw)
-}
-
-func firstMsg(items []any) (string, bool) {
-	for _, it := range items {
-		if m, ok := it.(map[string]any); ok {
-			if s, ok := m["msg"].(string); ok {
-				return s, true
-			}
-		}
-	}
-	return "", false
+	return &Error{Status: http.StatusServiceUnavailable, Code: "ENGINE_UNAVAILABLE", Message: "The triage engine is not reachable right now. Try again in a moment.", Err: err}
 }
