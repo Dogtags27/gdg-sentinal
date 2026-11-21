@@ -59,6 +59,7 @@ ErrorCode = Literal[
     "ENGINE_TIMEOUT",
     "ENGINE_BAD_RESPONSE",
     "INTERNAL",
+    "NOT_FOUND",
 ]
 HealthStatus = Literal["ok", "degraded", "down"]
 ComponentStatus = Literal["ok", "down", "stub", "unknown"]

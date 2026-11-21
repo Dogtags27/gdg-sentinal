@@ -15,9 +15,10 @@ from typing import Any
 from fastapi import BackgroundTasks, FastAPI, Query, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel, ConfigDict
 
 from engine.app import pipeline
-from engine.app.common import chunk_stats, r2
+from engine.app.common import chunk_stats, r2, ticket_store
 from engine.app.schemas import CONTRACT_VERSION, EngineHealth, EngineTriageRequest, EngineTriageResponse, ErrorResponse
 from engine.app.settings import get_settings
 
@@ -147,7 +148,48 @@ def triage(req: EngineTriageRequest, background: BackgroundTasks) -> EngineTriag
     resp = pipeline.run_triage(req)
     if resp.precedents:
         background.add_task(chunk_stats.bump_queried_count, [p.ticket_id for p in resp.precedents])
+    background.add_task(ticket_store.save, resp.model_dump(mode="json", by_alias=True))
     return resp
+
+
+# ---- shared ticket store: creators submit, managers resolve -------------------------------
+
+
+class StatusUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    status: str
+
+
+def _store_call(fn, *args):
+    try:
+        return fn(*args)
+    except ticket_store.StoreUnavailable as exc:
+        return _error(503, "ENGINE_UNAVAILABLE", str(exc))
+
+
+@app.get("/v1/tickets")
+def list_tickets(limit: int = Query(200, ge=1, le=2000)) -> JSONResponse:
+    out = _store_call(ticket_store.recent, limit)
+    return out if isinstance(out, JSONResponse) else JSONResponse(content={"items": out})
+
+
+@app.get("/v1/tickets/{ticket_id}/status")
+def ticket_status(ticket_id: str) -> JSONResponse:
+    out = _store_call(ticket_store.status_view, ticket_id)
+    if isinstance(out, JSONResponse):
+        return out
+    return JSONResponse(content=out) if out else _error(404, "NOT_FOUND", "No ticket with that id (tickets are kept for 7 days).")
+
+
+@app.put("/v1/tickets/{ticket_id}/status")
+def update_ticket_status(ticket_id: str, body: StatusUpdate) -> JSONResponse:
+    try:
+        out = _store_call(ticket_store.set_status, ticket_id, body.status)
+    except ValueError as exc:
+        return _error(422, "VALIDATION_ERROR", f"status: {exc}")
+    if isinstance(out, JSONResponse):
+        return out
+    return JSONResponse(content=out) if out else _error(404, "NOT_FOUND", "No ticket with that id (tickets are kept for 7 days).")
 
 
 @app.get("/v1/chunks/top-queried")

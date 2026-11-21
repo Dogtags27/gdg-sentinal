@@ -13,7 +13,8 @@
             "ENGINE_UNAVAILABLE",
             "ENGINE_TIMEOUT",
             "ENGINE_BAD_RESPONSE",
-            "INTERNAL"
+            "INTERNAL",
+            "NOT_FOUND"
           ],
           "title": "Code",
           "type": "string"

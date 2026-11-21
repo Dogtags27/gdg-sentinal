@@ -73,16 +73,71 @@ async function wrapMock(fn) {
   }
 }
 
+// Mock mode has no server ticket store: keep one in this browser so both roles still work locally.
+const MOCK_STORE = 'sd-mock-ticket-store';
+const STATUS_FROM = { ESCALATE_ONCALL: 'escalated', HUMAN_REVIEW: 'review', AUTO_DRAFT: 'drafted' };
+const mockStore = {
+  read() {
+    try {
+      return JSON.parse(localStorage.getItem(MOCK_STORE) || '[]');
+    } catch {
+      return [];
+    }
+  },
+  write(items) {
+    try {
+      localStorage.setItem(MOCK_STORE, JSON.stringify(items.slice(0, 200)));
+    } catch {
+      /* storage full or blocked: the list just won't persist */
+    }
+  },
+  add(t) {
+    this.write([{ ...t, status: STATUS_FROM[t.gate?.decision] ?? 'new' }, ...this.read().filter((x) => x.ticket_id !== t.ticket_id)]);
+  },
+};
+const statusView = (t) => ({ ticket_id: t.ticket_id, subject: t.subject, created_at: t.created_at, status: t.status });
+const notFound = () => new ApiError('No ticket with that id.', { status: 404, code: 'NOT_FOUND' });
+
 // Paths and shapes: contracts/README.md (v1).
 export const api = {
   health: () => (USE_MOCK ? wrapMock(() => mockApi.health()) : request('/api/v1/health', { timeout: 3_000 })),
 
   /** @param {{subject?: string, body: string, ticket_id?: string}} ticket */
-  triage: async (ticket, opts = {}) =>
-    normalizeTriage(
-      USE_MOCK
-        ? await wrapMock(() => mockApi.triage(ticket, opts))
-        : await request('/api/v1/triage', { method: 'POST', body: ticket, timeout: 20_000 }),
-      ticket,
-    ),
+  triage: async (ticket, opts = {}) => {
+    if (USE_MOCK) {
+      const t = normalizeTriage(await wrapMock(() => mockApi.triage(ticket, opts)), ticket);
+      mockStore.add(t);
+      return t;
+    }
+    return normalizeTriage(await request('/api/v1/triage', { method: 'POST', body: ticket, timeout: 20_000 }), ticket);
+  },
+
+  /** Incident managers: recent tickets from every creator, newest first. */
+  tickets: async (limit = 200) => {
+    const items = USE_MOCK ? mockStore.read() : (await request(`/api/v1/tickets?limit=${limit}`, { timeout: 10_000 })).items;
+    return items.map((t) => normalizeTriage(t));
+  },
+
+  /** Ticket creators: the minimal status of one of their own tickets. */
+  ticketStatus: async (id) => {
+    if (USE_MOCK) {
+      const t = mockStore.read().find((x) => x.ticket_id === id);
+      if (!t) throw notFound();
+      return statusView(t);
+    }
+    return request(`/api/v1/tickets/${encodeURIComponent(id)}/status`, { timeout: 8_000 });
+  },
+
+  /** Incident managers: move a ticket through the workflow (new, escalated, review, drafted, resolved). */
+  setTicketStatus: async (id, status) => {
+    if (USE_MOCK) {
+      const items = mockStore.read();
+      const t = items.find((x) => x.ticket_id === id);
+      if (!t) throw notFound();
+      t.status = status;
+      mockStore.write(items);
+      return statusView(t);
+    }
+    return request(`/api/v1/tickets/${encodeURIComponent(id)}/status`, { method: 'PUT', body: { status }, timeout: 8_000 });
+  },
 };

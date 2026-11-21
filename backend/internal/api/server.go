@@ -48,6 +48,8 @@ type Server struct {
 	InsightsDir string
 	TrustProxy  bool
 	Log         *slog.Logger
+	// EngineURL is the Python engine base URL for the ticket store routes; empty in mock mode.
+	EngineURL string
 }
 
 func (s *Server) Handler() http.Handler {
@@ -55,6 +57,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/v1/health", s.health)
 	mux.HandleFunc("POST /api/v1/triage", s.triage)
 	mux.HandleFunc("GET /api/v1/insights/{name}", s.insights)
+	s.ticketRoutes(mux)
 	// NOT_FOUND and METHOD_NOT_ALLOWED are outside the contract's error codes; the console never gets them.
 	mux.HandleFunc("/api/v1/triage", methodNotAllowed("POST"))
 	mux.HandleFunc("/api/v1/health", methodNotAllowed("GET"))

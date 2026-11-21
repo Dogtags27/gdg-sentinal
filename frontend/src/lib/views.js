@@ -53,5 +53,5 @@ export const VIEWS = [
 ];
 
 export const VIEW_BY_ID = Object.fromEntries(VIEWS.map((v) => [v.id, v]));
-export const viewHref = (id) => (id === 'needs' ? '#/' : `#/view/${id}`);
+export const viewHref = (id) => (id === 'needs' ? '#/console' : `#/view/${id}`);
 export const countView = (tickets, id) => tickets.filter(VIEW_BY_ID[id].test).length;

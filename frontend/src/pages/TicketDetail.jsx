@@ -81,7 +81,7 @@ export default function TicketDetail({ id }) {
     return (
       <div className="p-10 text-center">
         <p className="text-[14px] font-medium">Ticket {id} isn't in this session.</p>
-        <a href="#/" className="mt-2 inline-block text-brand-600 hover:underline">Back to the dashboard</a>
+        <a href="#/console" className="mt-2 inline-block text-brand-600 hover:underline">Back to the dashboard</a>
       </div>
     );
   }
@@ -124,7 +124,7 @@ export default function TicketDetail({ id }) {
     <div className="flex min-h-full flex-col">
       {/* Title bar */}
       <div className="flex items-center gap-3 border-b border-line bg-white px-4 py-2.5">
-        <a href="#/" className="flex shrink-0 items-center gap-1 rounded px-1 py-0.5 text-[12.5px] text-ink-3 hover:text-ink" title="Back to Overview"><ArrowLeft size={15} /> <span className="hidden sm:inline">Overview</span></a>
+        <a href="#/console" className="flex shrink-0 items-center gap-1 rounded px-1 py-0.5 text-[12.5px] text-ink-3 hover:text-ink" title="Back to Overview"><ArrowLeft size={15} /> <span className="hidden sm:inline">Overview</span></a>
         <h1 className="flex min-w-0 items-baseline gap-2 text-[15px] font-semibold text-ink">
           <span className="shrink-0 font-mono text-[13px] font-medium text-brand-600">{t.ticket_id}</span>
           <span className="truncate">{ticketTitle(t)}</span>

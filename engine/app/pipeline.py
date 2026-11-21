@@ -18,6 +18,7 @@ To replace a stub, point its Stage.run at the real function (same signature:
 from __future__ import annotations
 
 import logging
+import os
 import secrets
 import threading
 from collections.abc import Callable
@@ -32,6 +33,7 @@ from engine.app import stubs
 from engine.app.contract_rules import decision_for
 from engine.app.generate.fallbacks import fallback_draft
 from engine.app.generate.llm import draft_stage, validate_stage
+from engine.app.policy.burst import DEFAULT_BURST_THRESHOLD, DEFAULT_WINDOW_SECONDS, OutageBurstDetector
 from engine.app.policy.gate import EscalationGate
 from engine.app.schemas import (
     CONTRACT_VERSION,
@@ -113,14 +115,37 @@ def _fallback_gate(s: TicketState) -> None:
 # --------------------------------------------------------------------------- gate (data analyst's module)
 
 _gate_lock = threading.Lock()  # the burst detector keeps state across requests
-_gate = EscalationGate()
+
+# Demo traffic gets its own gate and burst window, so pressing "Simulate outage" in the console (ticket IDs
+# SIM-...) or the deploy warm-up (WARMUP-...) can show a burst without tripping one for real tickets.
+DEMO_TICKET_PREFIXES = ("SIM-", "WARMUP-")
+
+
+def _burst_detector() -> OutageBurstDetector:
+    window = int(os.environ.get("BURST_WINDOW_S") or DEFAULT_WINDOW_SECONDS)
+    threshold = int(os.environ.get("BURST_MIN_TICKETS") or DEFAULT_BURST_THRESHOLD)
+    return OutageBurstDetector(window_seconds=window, burst_threshold=threshold)
+
+
+def _new_gate(**kwargs: Any) -> EscalationGate:
+    kwargs.setdefault("burst_detector", _burst_detector())
+    return EscalationGate(**kwargs)
+
+
+_gate = _new_gate()
+_demo_gate = _new_gate()
 
 
 def reset_gate(**kwargs: Any) -> None:
-    """Fresh gate and burst window. Used by tests; thresholds will come from policy.yaml."""
-    global _gate
+    """Fresh gates (live and demo) with empty burst windows; kwargs set the gate thresholds."""
+    global _gate, _demo_gate
     with _gate_lock:
-        _gate = EscalationGate(**kwargs)
+        _gate = _new_gate(**kwargs)
+        _demo_gate = _new_gate(**{k: v for k, v in kwargs.items() if k != "burst_detector"})
+
+
+def is_demo_ticket(ticket_id: str) -> bool:
+    return ticket_id.upper().startswith(DEMO_TICKET_PREFIXES)
 
 
 def _iso(epoch: float) -> datetime:
@@ -144,7 +169,8 @@ def run_gate(s: TicketState) -> None:
     cls = s.classification or {}
     draft = s.draft or {}
     with _gate_lock:
-        result = _gate.evaluate(
+        gate = _demo_gate if is_demo_ticket(s.ticket_id) else _gate
+        result = gate.evaluate(
             ticket_id=s.ticket_id,
             text=s.text,
             detected_language=(s.language or {}).get("code", "unknown"),

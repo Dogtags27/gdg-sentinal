@@ -61,7 +61,8 @@ def main() -> int:
     ok = True
     for ticket in TICKETS:
         t0 = time.monotonic()
-        status, body = call(base + triage, ticket)
+        # WARMUP- IDs keep these out of the live burst window (the engine's demo window takes them).
+        status, body = call(base + triage, {**ticket, "ticket_id": f"WARMUP-{int(time.time())}-{TICKETS.index(ticket)}"})
         ms = (time.monotonic() - t0) * 1000
         if status == 200:
             print(f"OK    {ms:7.0f} ms  {body['gate']['decision']:<16} draft={body['draft']['mode']:<10} {ticket['subject']}")

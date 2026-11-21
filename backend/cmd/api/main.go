@@ -27,8 +27,10 @@ func main() {
 	}
 
 	var eng engine.Engine = engine.NewClient(cfg.EngineURL, cfg.EngineTimeout)
+	engineURL := cfg.EngineURL
 	if cfg.MockEngine {
 		eng = engine.NewMock()
+		engineURL = "" // no ticket store without the live engine
 	}
 	srv := &api.Server{
 		Engine:      eng,
@@ -37,6 +39,7 @@ func main() {
 		InsightsDir: cfg.InsightsDir,
 		TrustProxy:  cfg.TrustProxy,
 		Log:         log,
+		EngineURL:   engineURL,
 	}
 	hs := &http.Server{
 		Addr:              ":" + cfg.Port,

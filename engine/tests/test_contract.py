@@ -93,7 +93,7 @@ def test_example_gate_output_is_what_the_real_gate_produces(path: Path) -> None:
     detector = OutageBurstDetector(window_seconds=600, burst_threshold=3)
     if resp["burst"]:
         for i in range(resp["burst"]["ticket_count"] - 1):
-            detector.record_and_evaluate(f"WARMUP-{i}", "Our VPN is down at another site", cls["queue"]["label"])
+            detector.record_and_evaluate(f"TKT-PRE-{i}", f"Our VPN is down at site {i}", cls["queue"]["label"])
     result = EscalationGate(burst_detector=detector).evaluate(
         ticket_id=resp["ticket_id"],
         text=f"{resp['subject']}\n\n{resp['body']}" if resp["subject"] else resp["body"],

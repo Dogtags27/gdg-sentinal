@@ -1,10 +1,10 @@
 import { useEffect } from 'react';
-import { Plus, Search, ShieldCheck, X } from 'lucide-react';
+import { ArrowLeftRight, Search, ShieldCheck, X } from 'lucide-react';
 import { go, ticketHref } from '../lib/useHashRoute.js';
 import { useTickets } from '../state/tickets.jsx';
 
-// Navigation lives in the side rail; the top bar holds the app-wide search and the one primary action.
-export default function TopBar({ route, query, setQuery, onNew }) {
+// Incident manager top bar: search and the role switch. Managers resolve tickets, so there is no "New ticket" here.
+export default function TopBar({ route, query, setQuery }) {
   const { byId } = useTickets();
 
   // "/" focuses search from anywhere outside a text field.
@@ -27,13 +27,13 @@ export default function TopBar({ route, query, setQuery, onNew }) {
       setQuery('');
       go(ticketHref(id));
     } else if (route.page !== 'dashboard' && route.page !== 'board') {
-      go('#/');
+      go('#/console');
     }
   };
 
   return (
     <header className="sticky top-0 z-40 flex h-14 shrink-0 items-center gap-3 bg-brand-950 px-3 text-white sm:gap-4 sm:px-4">
-      <a href="#/" className="flex shrink-0 items-center gap-2.5 rounded-md outline-none focus-visible:ring-2 focus-visible:ring-teal-300 lg:w-[192px]">
+      <a href="#/console" className="flex shrink-0 items-center gap-2.5 rounded-md outline-none focus-visible:ring-2 focus-visible:ring-teal-300 lg:w-[192px]">
         <span className="grid h-8 w-8 place-items-center rounded-lg bg-teal-500 text-brand-950">
           <ShieldCheck size={19} strokeWidth={2.4} aria-hidden />
         </span>
@@ -59,17 +59,17 @@ export default function TopBar({ route, query, setQuery, onNew }) {
         )}
       </form>
 
-      <div className="ml-auto flex shrink-0 items-center gap-3">
-        <button
-          onClick={onNew}
-          className="flex h-9 items-center gap-1.5 rounded-lg bg-teal-500 px-3 text-[13px] font-semibold text-brand-950 transition hover:bg-teal-400 focus-visible:ring-2 focus-visible:ring-white focus-visible:outline-none"
+      <div className="ml-auto flex shrink-0 items-center gap-2">
+        <a
+          href="#/"
+          title="Switch role"
+          className="flex h-9 items-center gap-1.5 rounded-lg border border-white/15 px-3 text-[13px] font-medium text-slate-200 transition hover:bg-white/10 focus-visible:ring-2 focus-visible:ring-teal-300 focus-visible:outline-none"
         >
-          <Plus size={15} strokeWidth={2.6} aria-hidden />
-          <span className="hidden sm:inline">New ticket</span>
-          <span className="sr-only sm:hidden">New ticket</span>
-        </button>
-        <span title="Signed in as operator" className="grid h-8 w-8 place-items-center rounded-full bg-brand-700 text-[11px] font-semibold text-white">
-          OP
+          <ArrowLeftRight size={14} aria-hidden />
+          <span className="hidden sm:inline">Switch role</span>
+        </a>
+        <span title="Signed in as incident manager" className="grid h-8 w-8 place-items-center rounded-full bg-brand-700 text-[11px] font-semibold text-white">
+          IM
         </span>
       </div>
     </header>

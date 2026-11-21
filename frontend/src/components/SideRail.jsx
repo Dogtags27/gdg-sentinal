@@ -1,4 +1,4 @@
-import { BarChart3, History, KanbanSquare, ListChecks, Radar } from 'lucide-react';
+import { BarChart3, History, KanbanSquare, ListChecks } from 'lucide-react';
 import { useTickets } from '../state/tickets.jsx';
 import { HEALTH, USE_MOCK, healthTitle, useHealth } from '../lib/useHealth.js';
 import { VIEWS, countView, viewHref } from '../lib/views.js';
@@ -34,9 +34,8 @@ export default function SideRail({ route, onHistory }) {
   const openCount = tickets.filter((t) => t.status !== 'resolved').length;
 
   const top = [
-    { key: 'overview', href: '#/', icon: ListChecks, label: 'Overview', active: (onDashboard && view === 'needs') || route.page === 'ticket', n: needs, hot: true },
+    { key: 'overview', href: '#/console', icon: ListChecks, label: 'Overview', active: (onDashboard && view === 'needs') || route.page === 'ticket', n: needs, hot: true },
     { key: 'board', href: '#/board', icon: KanbanSquare, label: 'Board', active: route.page === 'board', n: openCount },
-    { key: 'lab', href: '#/lab', icon: Radar, label: 'Live triage', active: route.page === 'lab' },
   ];
 
   return (

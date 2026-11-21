@@ -86,11 +86,11 @@ export default function TriageDashboard({ view: viewId = 'needs', query, setQuer
         <button
           onClick={simulateOutage}
           disabled={busy.outage}
-          title="Sends a burst of outage tickets through triage to show burst detection"
+          title="Demo: sends 4 drill tickets (tagged SIM) to show major-incident detection. Real tickets are never affected."
           className="ml-auto flex items-center gap-1.5 rounded-lg border border-line-dark bg-white px-3 py-1.5 text-[12.5px] font-medium text-ink-2 transition hover:border-red-300 hover:text-red-700 disabled:opacity-60"
         >
           {busy.outage ? <Loader2 size={13} className="animate-spin" /> : <Zap size={13} />}
-          Simulate an outage
+          Outage drill
         </button>
       </header>
 
