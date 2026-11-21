@@ -12,14 +12,17 @@ import {
   Shield,
   Siren,
 } from 'lucide-react';
-import { Bar, BarChart, Cell, Legend, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import ChartCard from '../../components/charts/ChartCard.jsx';
 import HBarChart from '../../components/charts/HBarChart.jsx';
 import KpiCard from '../../components/KpiCard.jsx';
 import operationsData from './data/operations_insights.json';
 import modelData from './data/model_insights.json';
 
-const SERIES = ['var(--color-series-1)', '#10B981', '#F59E0B'];
+// Two clearly different hues for the two languages (teal and navy), never two greens.
+const LANG_COLORS = { en: 'bg-teal-600', de: 'bg-brand-700' };
+const LANG_NAMES = { en: 'English', de: 'German' };
+const PRIORITY_ORDER = ['high', 'medium', 'low'];
+const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
 
 const SUB_TABS = [
   { id: 'operations', label: 'Operational volumes', icon: Database },
@@ -64,7 +67,7 @@ function ProvenanceFooter() {
 
 function SubTabBar({ active, onChange }) {
   return (
-    <div className="flex flex-wrap gap-1.5 border-b border-line bg-white px-5 py-2" role="tablist" aria-label="Dataset insights">
+    <div className="flex flex-wrap gap-1.5" role="tablist" aria-label="Dataset insights">
       {SUB_TABS.map(({ id, label, icon: Icon }) => (
         <button
           key={id}
@@ -73,7 +76,7 @@ function SubTabBar({ active, onChange }) {
           aria-selected={active === id}
           onClick={() => onChange(id)}
           className={`flex items-center gap-1.5 rounded px-2.5 py-1 text-[12.5px] font-medium ${
-            active === id ? 'bg-brand-100 text-brand-800 ring-1 ring-brand-600/30' : 'bg-slate-100 text-ink hover:bg-slate-200'
+            active === id ? 'bg-brand-800 text-white' : 'bg-white text-ink-2 ring-1 ring-line hover:bg-slate-50'
           }`}
         >
           <Icon size={14} aria-hidden />
@@ -84,22 +87,52 @@ function SubTabBar({ active, onChange }) {
   );
 }
 
+// One stacked bar instead of a pie: two parts compare more accurately by length than by angle.
+function LanguageSplit({ rows }) {
+  const total = rows.reduce((a, r) => a + r.value, 0) || 1;
+  return (
+    <div className="pt-1 pb-2">
+      <div className="flex h-7 gap-0.5 overflow-hidden rounded-md" role="img" aria-label={rows.map((r) => `${r.label} ${r.pct}%`).join(', ')}>
+        {rows.map((r) => (
+          <div key={r.code} className={LANG_COLORS[r.code] ?? 'bg-slate-400'} style={{ width: `${(r.value / total) * 100}%` }} />
+        ))}
+      </div>
+      <dl className="mt-3 grid grid-cols-2 gap-3">
+        {rows.map((r) => (
+          <div key={r.code}>
+            <dt className="flex items-center gap-1.5 text-[12px] text-ink-2">
+              <span className={`h-2.5 w-2.5 rounded-sm ${LANG_COLORS[r.code] ?? 'bg-slate-400'}`} aria-hidden />
+              {r.label}
+            </dt>
+            <dd className="mt-0.5 text-[20px] font-semibold text-ink">
+              {r.pct}% <span className="text-[12px] font-normal text-ink-3">{r.value.toLocaleString()} tickets</span>
+            </dd>
+          </div>
+        ))}
+      </dl>
+    </div>
+  );
+}
+
 export function InsightsTab() {
   const [activeSubTab, setActiveSubTab] = useState('operations');
 
-  const queueChartData = Object.entries(operationsData.queues).map(([name, count]) => ({
-    name: shortQueue(name),
-    tickets: count,
-  }));
-
-  const langChartData = Object.entries(operationsData.languages.counts).map(([lang, count]) => ({
-    name: lang === 'en' ? 'English (en)' : 'German (de)',
-    value: count,
-  }));
-
-  const priorityTable = Object.entries(operationsData.priorities)
-    .map(([prio, count]) => ({ label: prio.toUpperCase(), value: count }))
+  const queueTable = Object.entries(operationsData.queues)
+    .map(([name, count]) => ({ label: shortQueue(name), value: count }))
     .sort((a, b) => b.value - a.value);
+
+  const langTable = Object.entries(operationsData.languages.counts).map(([code, count]) => ({
+    code,
+    label: LANG_NAMES[code] ?? code,
+    value: count,
+    pct: operationsData.languages.percentages[code],
+  }));
+
+  // Fixed High → Medium → Low order: priority is ordinal, so it is not sorted by size.
+  const priorityTable = PRIORITY_ORDER.filter((p) => p in operationsData.priorities).map((p) => ({
+    label: cap(p),
+    value: operationsData.priorities[p],
+  }));
 
   const criticalByQueue = Object.entries(operationsData.critical_outages?.by_queue ?? {})
     .map(([label, value]) => ({ label: shortQueue(label), value }))
@@ -108,17 +141,7 @@ export function InsightsTab() {
   const modelFromHoldout = modelData.metrics_source === 'holdout_eval';
 
   return (
-    <div className="space-y-4 pt-2">
-      <header className="flex flex-col gap-2 border-b border-line pb-3 md:flex-row md:items-end md:justify-between">
-        <div>
-          <h1 className="flex items-center gap-2 text-[18px] font-semibold text-ink">
-            <BarChart3 size={20} className="text-brand-600" aria-hidden />
-            SentinelDesk dataset insights
-          </h1>
-          <p className="text-[12.5px] text-ink-3">Historical ticket distribution and holdout benchmark telemetry.</p>
-        </div>
-      </header>
-
+    <div className="space-y-4 pt-4">
       <SubTabBar active={activeSubTab} onChange={setActiveSubTab} />
 
       {activeSubTab === 'operations' && (
@@ -132,16 +155,16 @@ export function InsightsTab() {
             />
             <KpiCard
               icon={Languages}
-              label="German (DE) share"
+              label="German share"
               value={`${operationsData.languages.percentages.de}%`}
               unit={`(${operationsData.languages.counts.de.toLocaleString()} tickets)`}
             />
             <KpiCard
               icon={Siren}
               iconClass="text-red-700 bg-red-50"
-              label="Critical Incident + High"
+              label="High-priority incidents"
               value={operationsData.critical_outages.total_count.toLocaleString()}
-              unit={`(${operationsData.critical_outages.percentage}% of stream)`}
+              unit={`(${operationsData.critical_outages.percentage}% of tickets)`}
             />
             <KpiCard
               icon={FileText}
@@ -154,46 +177,27 @@ export function InsightsTab() {
 
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
             <ChartCard
-              title="Volume by department queue"
-              subtitle="Top queues in source dataset"
-              table={queueChartData.map((r) => ({ label: r.name, value: r.tickets }))}
+              title="Tickets by queue"
+              subtitle="All queues in the training dataset"
+              table={queueTable}
               format={(v) => v.toLocaleString()}
+              className="lg:row-span-2"
             >
-              <div className="h-72">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={queueChartData} margin={{ top: 8, right: 8, left: -16, bottom: 48 }}>
-                    <XAxis dataKey="name" angle={-32} textAnchor="end" interval={0} tick={{ fontSize: 10, fill: 'var(--color-chart-muted)' }} />
-                    <YAxis tick={{ fontSize: 10, fill: 'var(--color-chart-muted)' }} allowDecimals={false} />
-                    <Tooltip />
-                    <Bar dataKey="tickets" fill="var(--color-series-1)" radius={[4, 4, 0, 0]} isAnimationActive={false} />
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
+              <HBarChart data={queueTable} format={(v) => v.toLocaleString()} labelWidth={150} />
             </ChartCard>
 
             <ChartCard
-              title="Multilingual mix (EN / DE)"
-              table={langChartData.map((r) => ({ label: r.name, value: r.value }))}
+              title="Languages"
+              subtitle="Share of tickets in English and German"
+              table={langTable}
               format={(v) => v.toLocaleString()}
             >
-              <div className="flex h-72 items-center justify-center">
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie data={langChartData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={88} label>
-                      {langChartData.map((_, index) => (
-                        <Cell key={`lang-${index}`} fill={SERIES[index % SERIES.length]} />
-                      ))}
-                    </Pie>
-                    <Tooltip />
-                    <Legend />
-                  </PieChart>
-                </ResponsiveContainer>
-              </div>
+              <LanguageSplit rows={langTable} />
             </ChartCard>
 
             <ChartCard
-              title="Priority distribution"
-              subtitle="high · medium · low"
+              title="Priority"
+              subtitle="Tickets per priority level"
               table={priorityTable}
               format={(v) => v.toLocaleString()}
             >
@@ -201,8 +205,8 @@ export function InsightsTab() {
             </ChartCard>
 
             <ChartCard
-              title="Critical outages by queue"
-              subtitle="type = Incident and priority = high"
+              title="High-priority incidents by queue"
+              subtitle="Incidents with high priority"
               table={criticalByQueue}
               format={(v) => v.toLocaleString()}
             >

@@ -13,10 +13,11 @@ export function Pill({ className = '', icon: Icon, children, title }) {
   );
 }
 
+// Solid red is reserved for "a person must act now"; the other outcomes are tinted.
 const DECISION_STYLE = {
   ESCALATE_ONCALL: ['bg-red-600 text-white', Siren],
-  HUMAN_REVIEW: ['bg-amber-600 text-white', UserCheck],
-  AUTO_DRAFT: ['bg-emerald-600 text-white', Sparkles],
+  HUMAN_REVIEW: ['bg-amber-50 text-amber-900 ring-1 ring-inset ring-amber-300', UserCheck],
+  AUTO_DRAFT: ['bg-teal-50 text-teal-800 ring-1 ring-inset ring-teal-200', Sparkles],
 };
 export function DecisionBadge({ decision, short = false }) {
   const [cls, Icon] = DECISION_STYLE[decision] ?? ['bg-slate-400 text-white', null];
@@ -25,25 +26,31 @@ export function DecisionBadge({ decision, short = false }) {
 }
 
 const STATUS_STYLE = {
-  new: ['bg-teal-400 text-white', Plus],
-  escalated: ['bg-red-700 text-white', Siren],
-  review: ['bg-violet-400 text-white', UserCheck],
-  drafted: ['bg-brand-700 text-white', PenLine],
-  resolved: ['bg-slate-500 text-white', CheckCircle2],
+  new: ['bg-slate-100 text-ink-2 ring-1 ring-inset ring-slate-300', Plus],
+  escalated: ['bg-red-600 text-white', Siren],
+  review: ['bg-amber-50 text-amber-900 ring-1 ring-inset ring-amber-300', UserCheck],
+  drafted: ['bg-teal-50 text-teal-800 ring-1 ring-inset ring-teal-200', PenLine],
+  resolved: ['bg-slate-100 text-ink-3 ring-1 ring-inset ring-slate-300', CheckCircle2],
 };
 export function StatusBadge({ status }) {
   const [cls, Icon] = STATUS_STYLE[status] ?? STATUS_STYLE.new;
   return <Pill className={cls} icon={Icon}>{WORKFLOW.find((w) => w.id === status)?.label ?? status}</Pill>;
 }
 
+// Priority is text weight and an icon, not a filled pill, so it never competes with the gate decision.
 const PRIORITY_STYLE = {
-  high: ['bg-red-600 text-white', Flame],
-  medium: ['bg-emerald-600 text-white', MinusCircle],
-  low: ['bg-sky-500 text-white', ArrowDownCircle],
+  high: ['font-semibold text-red-700', Flame],
+  medium: ['font-medium text-ink-2', MinusCircle],
+  low: ['text-ink-3', ArrowDownCircle],
 };
 export function PriorityBadge({ priority }) {
   const [cls, Icon] = PRIORITY_STYLE[priority] ?? PRIORITY_STYLE.low;
-  return <Pill className={cls} icon={Icon}>{PRIORITIES[priority]?.label ?? priority}</Pill>;
+  return (
+    <span className={`inline-flex items-center gap-1 whitespace-nowrap text-[12px] leading-4 ${cls}`}>
+      <Icon size={13} strokeWidth={2.2} aria-hidden />
+      {PRIORITIES[priority]?.label ?? priority}
+    </span>
+  );
 }
 
 export function LangBadge({ code }) {

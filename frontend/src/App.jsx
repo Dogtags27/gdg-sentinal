@@ -21,8 +21,8 @@ export default function App() {
   const [showHistory, setShowHistory] = useState(false);
 
   const page = {
-    dashboard: <TriageDashboard query={query} setQuery={setQuery} onNew={() => setShowNew(true)} />,
-    board: <KanbanBoard query={query} setQuery={setQuery} onNew={() => setShowNew(true)} />,
+    dashboard: <TriageDashboard view={route.view} query={query} setQuery={setQuery} />,
+    board: <KanbanBoard query={query} setQuery={setQuery} />,
     insights: (
       <Suspense fallback={<div className="p-8 text-[13px] text-ink-3">Loading insights…</div>}>
         <InsightsPage />
@@ -33,10 +33,10 @@ export default function App() {
 
   return (
     <div className="flex h-full flex-col">
-      <TopBar route={route} query={query} setQuery={setQuery} onNew={() => setShowNew(true)} onHistory={() => setShowHistory(true)} />
+      <TopBar route={route} query={query} setQuery={setQuery} onNew={() => setShowNew(true)} />
       <OutageBanner />
       <div className="flex min-h-0 flex-1">
-        <SideRail route={route} />
+        <SideRail route={route} onHistory={() => setShowHistory(true)} />
         <main className="thin-scroll min-w-0 flex-1 overflow-y-auto">
           <ErrorBoundary resetKey={`${route.page}/${route.id ?? ''}`}>{page}</ErrorBoundary>
         </main>

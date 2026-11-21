@@ -10,8 +10,8 @@ import PageHeader from '../components/PageHeader.jsx';
 
 // FS-13 — parity with sentineldeskhq.com "Reports" + live ops telemetry.
 const VIEWS = [
-  { id: 'session', label: 'Live session' },
   { id: 'dataset', label: 'Dataset & benchmarks' },
+  { id: 'session', label: 'This session' },
 ];
 
 const countBy = (xs, key) => {
@@ -40,20 +40,19 @@ function StatusTile({ icon: Icon, tone, label, value, total }) {
 export default function InsightsPage() {
   const [view, setView] = useState('dataset');
   return (
-    <div className="px-5 py-4">
+    <div className="mx-auto max-w-7xl px-4 py-5 sm:px-6">
       <PageHeader
-        eyebrow="Weekly IT & security reports"
         title="Reports"
-        description="Executive-ready operational volumes and holdout model telemetry — aligned with Sentinel Desk business insights."
+        description="What the training dataset looks like and how well the model and gate perform on held-out tickets, plus what happened in this session."
       />
-      <div className="mt-3 flex flex-wrap items-center gap-1.5 rounded-lg border border-line bg-white px-2 py-1.5 shadow-sm" role="tablist" aria-label="Reports view">
+      <div className="mt-4 flex flex-wrap items-center gap-1 border-b border-line" role="tablist" aria-label="Reports view">
         {VIEWS.map((v) => (
           <button
             key={v.id}
             role="tab"
             aria-selected={view === v.id}
             onClick={() => setView(v.id)}
-            className={`rounded px-2.5 py-1 text-[12.5px] font-medium ${view === v.id ? 'bg-brand-100 text-brand-800 ring-1 ring-brand-600/30' : 'bg-slate-100 text-ink hover:bg-slate-200'}`}
+            className={`-mb-px border-b-2 px-3 py-2 text-[13px] font-medium transition ${view === v.id ? 'border-brand-700 text-ink' : 'border-transparent text-ink-3 hover:text-ink'}`}
           >
             {v.label}
           </button>
@@ -87,10 +86,8 @@ function SessionInsights() {
   }, [tickets]);
 
   return (
-    <div className="px-5 py-3">
-      <div className="text-[12.5px] text-ink-2">Incident Triage <span className="mx-1 text-ink-3">/</span> Insights</div>
-      <h1 className="mt-3 text-[22px] font-semibold">Insights</h1>
-      <p className="mt-1 text-[13px] text-ink-2">Live view of this session's {d.n} triaged tickets. Dataset volumes and holdout metrics are under "Dataset &amp; model".</p>
+    <div className="pt-4">
+      <p className="text-[13px] text-ink-2">The {d.n} tickets triaged in this browser session. Dataset volumes and model quality are under Dataset &amp; benchmarks.</p>
 
       <div className="mt-4 flex flex-wrap gap-3">
         <StatusTile icon={Siren} tone="text-red-600" label="Escalated to on-call" value={d.esc} total={d.n} />

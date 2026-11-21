@@ -14,10 +14,11 @@
   --color-brand-100: #e0f2fe;
   --color-brand-50: #f0f9ff;
 
-  --color-page: #f6f4ef;
+  /* Cool neutral grey: reads as a calm work surface, not an editorial page */
+  --color-page: #f3f5f7;
   --color-card: #ffffff;
-  --color-line: #e3ded5;
-  --color-line-dark: #d0c8bb;
+  --color-line: #e2e6eb;
+  --color-line-dark: #cdd3db;
   --color-ink: #14171f;
   --color-ink-2: #343a46;
   --color-ink-3: #666f7d;
@@ -29,8 +30,8 @@
 
   /* Chart tokens */
   --color-series-1: #0d9488;
-  --color-chart-grid: #e2ddd3;
-  --color-chart-axis: #c3c2b7;
+  --color-chart-grid: #e4e8ed;
+  --color-chart-axis: #c5ccd5;
   --color-chart-muted: #8492a6;
 
   /* Elevation */
@@ -50,20 +51,6 @@ body {
 .font-mono { font-family: var(--font-mono); }
 .tabular { font-variant-numeric: tabular-nums; }
 
-.sentinel-card {
-  border: 1px solid var(--color-line);
-  border-radius: 0.75rem;
-  background: white;
-  box-shadow: var(--shadow-sentinel-sm);
-}
-
-.sentinel-hero-card {
-  border: 1px solid var(--color-line-dark);
-  border-radius: 1rem;
-  background: white;
-  box-shadow: var(--shadow-sentinel-md);
-}
-
 .thin-scroll { scrollbar-width: thin; scrollbar-color: #cbd5e1 transparent; }
 
 @keyframes pulse-dot {
@@ -76,15 +63,7 @@ body {
 @keyframes slide-in { from { transform: translateX(100%); } to { transform: translateX(0); } }
 .animate-slide-in { animation: slide-in 180ms ease-out; }
 
-.kbd-badge {
-  display: inline-block;
-  padding: 1px 5px;
-  font-size: 10px;
-  font-family: var(--font-mono);
-  font-weight: 600;
-  color: var(--color-ink-2);
-  background: #f1f5f9;
-  border: 1px solid #cbd5e1;
-  border-radius: 4px;
-  box-shadow: 0 1px 0 rgba(0,0,0,0.06);
+@media (prefers-reduced-motion: reduce) {
+  .animate-slide-in, .animate-pulse-dot { animation: none; }
 }
+

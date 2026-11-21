@@ -1,27 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
-import {
-  ArrowDown, ArrowUp, ArrowUpDown, Check, ChevronLeft, ChevronRight, CornerDownLeft,
-  FileCheck, Filter, Gauge, GitMerge, Layers, Loader2, Plus, Search, ShieldCheck, Siren, Sparkles, Timer, X, Zap,
-} from 'lucide-react';
-import KpiCard from '../components/KpiCard.jsx';
+import { ArrowDown, ArrowUp, ArrowUpDown, Check, ChevronLeft, ChevronRight, Loader2, Sparkles, X, Zap } from 'lucide-react';
 import DetailsModal from '../components/DetailsModal.jsx';
-import MarketingMetricTile from '../components/MarketingMetricTile.jsx';
-import LiveTicketFeed from '../components/LiveTicketFeed.jsx';
 import { ConfidenceBar, DecisionBadge, LangBadge, PriorityBadge, ReasonChip } from '../components/Badges.jsx';
 import { useTickets } from '../state/tickets.jsx';
-import { USE_MOCK } from '../api/client.js';
 import { PRIORITIES } from '../lib/constants.js';
 import { ms, overallConfidence, shortDate, ticketTitle } from '../lib/format.js';
 import { ticketHref } from '../lib/useHashRoute.js';
-
-const TABS = [
-  { id: 'needs', label: 'Needs action', test: (t) => t.review === 'pending' && t.status !== 'resolved', count: true },
-  { id: 'escalated', label: 'Escalated', test: (t) => t.gate.decision === 'ESCALATE_ONCALL' },
-  { id: 'auto', label: 'Auto-drafted', test: (t) => t.gate.decision === 'AUTO_DRAFT' },
-  { id: 'accepted', label: 'Accepted', test: (t) => t.review === 'accepted' },
-  { id: 'rejected', label: 'Rejected', test: (t) => t.review === 'rejected' },
-  { id: 'failed', label: 'Degraded', test: (t) => t.gate.reasons.some((r) => r.code === 'ENGINE_DEGRADED' || r.code === 'UNGROUNDED_DRAFT') },
-];
+import { VIEWS, VIEW_BY_ID, countView, viewHref } from '../lib/views.js';
 
 const DECISION_RANK = { ESCALATE_ONCALL: 3, HUMAN_REVIEW: 2, AUTO_DRAFT: 1 };
 const COLUMNS = [
@@ -36,67 +21,53 @@ const COLUMNS = [
   { key: 'created', label: 'Created', get: (t) => t.created_at },
 ];
 
+// The three gate outcomes, in the order a ticket is checked. Colors match the side-rail queue dots.
+const OUTCOMES = [
+  { id: 'escalated', bar: 'bg-red-600', text: 'text-red-700', what: 'On-call paged, draft held' },
+  { id: 'review', bar: 'bg-amber-400', text: 'text-amber-700', what: 'A safety check fired' },
+  { id: 'auto', bar: 'bg-teal-500', text: 'text-teal-700', what: 'Grounded draft ready to send' },
+];
+
 const median = (xs) => {
   if (!xs.length) return null;
   const s = [...xs].sort((a, b) => a - b);
   return s[Math.floor(s.length / 2)];
 };
 
-export default function TriageDashboard({ query, setQuery, onNew }) {
+export default function TriageDashboard({ view: viewId = 'needs', query, setQuery }) {
   const { tickets, review, toast, simulateOutage, busy } = useTickets();
-  const [tab, setTab] = useState('needs');
-  const [showResolved, setShowResolved] = useState(false);
+  const view = VIEW_BY_ID[viewId] ?? VIEW_BY_ID.needs;
   const [sort, setSort] = useState({ key: 'created', dir: 'desc' });
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const [selected, setSelected] = useState(() => new Set());
   const [details, setDetails] = useState(null);
 
-  // Keyboard navigation shortcuts
   useEffect(() => {
-    const handleKeyDown = (e) => {
-      if (['INPUT', 'TEXTAREA'].includes(document.activeElement?.tagName)) return;
-      if (e.key === '/') {
-        e.preventDefault();
-        document.getElementById('dashboard-filter-input')?.focus();
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, []);
-
-  const kpis = useMemo(() => {
-    const n = tickets.length;
-    const open = tickets.filter((t) => t.status !== 'resolved').length;
-    const auto = tickets.filter((t) => t.gate.decision === 'AUTO_DRAFT').length;
-    const esc = tickets.filter((t) => t.gate.decision === 'ESCALATE_ONCALL').length;
-    const rev = tickets.filter((t) => t.gate.decision === 'HUMAN_REVIEW').length;
-    const autoPct = n ? Math.round((auto / n) * 100) : 0;
-    const slaProxy = n ? Math.min(99.9, 92 + autoPct * 0.08).toFixed(1) : '—';
-    return { n, open, auto, autoPct, esc, review: rev, p50: median(tickets.map((t) => t.latency_ms?.total ?? 0)), slaProxy };
-  }, [tickets]);
+    setPage(1);
+    setSelected(new Set());
+  }, [view.id, query]);
 
   const rows = useMemo(() => {
     const q = query.trim().toLowerCase();
-    const tabDef = TABS.find((x) => x.id === tab);
     const col = COLUMNS.find((c) => c.key === sort.key);
     return tickets
-      .filter((t) => showResolved || t.status !== 'resolved')
-      .filter(tabDef.test)
-      .filter((t) => !q || [t.ticket_id, t.subject, t.body, t.classification.queue.label, t.classification.type.label].some((f) => f.toLowerCase().includes(q)))
+      .filter(view.test)
+      .filter((t) => !q || [t.ticket_id, t.subject, t.body, t.classification.queue.label, t.classification.type.label].some((f) => f?.toLowerCase().includes(q)))
       .sort((a, b) => {
         const x = col.get(a);
         const y = col.get(b);
         const cmp = x < y ? -1 : x > y ? 1 : 0;
         return sort.dir === 'asc' ? cmp : -cmp;
       });
-  }, [tickets, tab, showResolved, query, sort]);
+  }, [tickets, view, query, sort]);
 
   const pages = Math.max(1, Math.ceil(rows.length / pageSize));
   const cur = Math.min(page, pages);
   const visible = rows.slice((cur - 1) * pageSize, cur * pageSize);
   const allChecked = visible.length > 0 && visible.every((t) => selected.has(t.ticket_id));
   const picked = visible.filter((t) => selected.has(t.ticket_id));
+  const needs = countView(tickets, 'needs');
 
   const toggleSort = (key) => setSort((s) => ({ key, dir: s.key === key && s.dir === 'desc' ? 'asc' : 'desc' }));
   const toggle = (id) => setSelected((s) => {
@@ -116,269 +87,183 @@ export default function TriageDashboard({ query, setQuery, onNew }) {
   };
 
   return (
-    <div className="px-5 py-5 max-w-7xl mx-auto space-y-5">
-      {/* OncoSys-Inspired Command Hero Banner */}
-      <section className="sentinel-hero-card p-6 md:p-8 bg-gradient-to-br from-white via-white to-sky-50/40 relative overflow-hidden">
-        <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
-          <div className="flex items-center gap-2 text-[11px] font-mono font-bold uppercase tracking-wider text-teal-700">
-            <ShieldCheck size={16} className="text-teal-600" />
-            <span>Autonomous Incident Response · Zero PII Leakage · Enterprise SLA</span>
-          </div>
-          <div className="flex items-center gap-2">
-            {USE_MOCK && <span className="rounded bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-800">Mock engine</span>}
-            <button
-              onClick={simulateOutage}
-              disabled={busy.outage}
-              className="flex items-center gap-1.5 rounded-lg border border-rose-200 bg-white px-3 py-1.5 text-[12px] font-medium text-rose-700 shadow-sm transition hover:bg-rose-50 disabled:opacity-60"
-            >
-              {busy.outage ? <Loader2 size={13} className="animate-spin" /> : <Zap size={13} />}
-              Simulate Outage
-            </button>
-            <button
-              onClick={onNew}
-              className="flex items-center gap-1.5 rounded-lg bg-teal-700 px-3.5 py-1.5 text-[12px] font-semibold text-white shadow-sm transition hover:bg-teal-800"
-            >
-              <Plus size={14} /> New Ticket
-            </button>
-          </div>
+    <div className="mx-auto max-w-7xl space-y-4 px-4 py-5 sm:px-6">
+      <header className="flex flex-wrap items-end gap-x-4 gap-y-2">
+        <div className="min-w-0">
+          <h1 className="text-[22px] font-semibold tracking-tight text-ink">Overview</h1>
+          <p className="mt-0.5 text-[13px] text-ink-2">
+            {needs === 0
+              ? 'Nothing is waiting for you. New tickets are triaged as they arrive.'
+              : `${needs} ticket${needs > 1 ? 's' : ''} need${needs > 1 ? '' : 's'} a person. Everything else was triaged automatically.`}
+          </p>
         </div>
+        <button
+          onClick={simulateOutage}
+          disabled={busy.outage}
+          title="Sends a burst of outage tickets through triage to show burst detection"
+          className="ml-auto flex items-center gap-1.5 rounded-lg border border-line-dark bg-white px-3 py-1.5 text-[12.5px] font-medium text-ink-2 transition hover:border-red-300 hover:text-red-700 disabled:opacity-60"
+        >
+          {busy.outage ? <Loader2 size={13} className="animate-spin" /> : <Zap size={13} />}
+          Simulate an outage
+        </button>
+      </header>
 
-        <h1 className="text-2xl md:text-3xl font-extrabold tracking-tight text-ink mb-2">
-          Every ticket triaged. <span className="text-teal-700 italic font-serif">Every escalation defended.</span>
-        </h1>
-        <p className="text-[13.5px] text-ink-2 max-w-3xl leading-relaxed mb-5">
-          Tickets are sanitized, categorized, prioritized, and routed automatically. Your engineering team only touches work that requires human judgment or safety sign-off.
-        </p>
+      <TriageSplit tickets={tickets} active={view.id} />
 
-        {/* Natural Language Prompt & Quick Scenario Chips */}
-        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 rounded-xl border border-line-dark bg-white p-2 shadow-sm focus-within:border-teal-600 focus-within:ring-2 focus-within:ring-teal-100">
-          <div className="flex flex-1 items-center gap-2 px-2">
-            <Search size={16} className="text-ink-3" />
-            <input
-              id="dashboard-filter-input"
-              value={query}
-              onChange={(e) => { setQuery(e.target.value); setPage(1); }}
-              placeholder="Search by keywords, error stacks, queues, or describe an incident (e.g. VPN, Stripe, SSO)..."
-              className="w-full text-[13px] text-ink placeholder:text-ink-3 outline-none bg-transparent"
-            />
-          </div>
-          <span className="hidden sm:inline-flex items-center gap-1 px-2 text-[11px] font-mono text-ink-3">
-            <span className="kbd-badge">/</span> to search
-          </span>
+      <section className="rounded-xl border border-line bg-white">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-line px-3 py-2.5 sm:px-4">
+          <nav className="flex flex-wrap gap-1" aria-label="Ticket views">
+            {VIEWS.map((v) => {
+              const on = v.id === view.id;
+              return (
+                <a
+                  key={v.id}
+                  href={viewHref(v.id)}
+                  aria-current={on ? 'page' : undefined}
+                  className={`flex items-center gap-1.5 rounded-md px-2.5 py-1 text-[12.5px] font-medium transition ${
+                    on ? 'bg-brand-800 text-white' : 'text-ink-2 hover:bg-slate-100'
+                  }`}
+                >
+                  {v.label}
+                  <span className={`tabular text-[11.5px] ${on ? 'text-white/75' : 'text-ink-3'}`}>{countView(tickets, v.id)}</span>
+                </a>
+              );
+            })}
+          </nav>
           {query && (
-            <button onClick={() => setQuery('')} className="p-1 text-ink-3 hover:text-ink">
-              <X size={15} />
-            </button>
+            <span className="ml-auto flex items-center gap-1.5 rounded-md bg-slate-100 px-2 py-1 text-[12px] text-ink-2">
+              Matching “{query}”
+              <button onClick={() => setQuery('')} className="rounded text-ink-3 hover:text-ink" aria-label="Clear search"><X size={13} /></button>
+            </span>
           )}
         </div>
+        <p className="border-b border-line px-3 py-2 text-[12px] text-ink-3 sm:px-4">{view.blurb}</p>
 
-        <div className="mt-3 flex flex-wrap items-center gap-2 text-[12px]">
-          <span className="font-mono text-[11px] font-semibold uppercase text-ink-3">Quick Scenarios:</span>
-          {['VPN Gateway', 'Payment Webhook', 'VIP Lockout', 'Database Pool'].map((sc) => (
-            <button
-              key={sc}
-              onClick={() => { setQuery(sc); setPage(1); }}
-              className="rounded-md border border-line bg-white/90 px-2.5 py-1 text-ink-2 shadow-2xs hover:border-teal-600 hover:bg-teal-50 hover:text-teal-800 transition"
-            >
-              {sc}
-            </button>
-          ))}
-        </div>
-      </section>
-
-      {/* 3-Step Methodology: Ingest -> Triage -> Defend */}
-      <section className="grid grid-cols-1 md:grid-cols-3 gap-3">
-        <div className="sentinel-card p-4">
-          <span className="font-mono text-[10.5px] font-bold text-teal-700 tracking-wider uppercase mb-1 block">01 Ingest & Mask</span>
-          <h3 className="font-bold text-[14px] flex items-center gap-1.5 text-ink mb-1">
-            <Filter size={15} className="text-teal-600" />
-            Zero-Retention Sanitization
-          </h3>
-          <p className="text-[12px] text-ink-2 leading-relaxed">
-            Multilingual tokenizer detects language and strips sensitive PII, passwords, and API keys before classification.
-          </p>
-        </div>
-
-        <div className="sentinel-card p-4">
-          <span className="font-mono text-[10.5px] font-bold text-cyan-700 tracking-wider uppercase mb-1 block">02 Evaluate Gates</span>
-          <h3 className="font-bold text-[14px] flex items-center gap-1.5 text-ink mb-1">
-            <Gauge size={15} className="text-cyan-600" />
-            Holdout Confidence Audit
-          </h3>
-          <p className="text-[12px] text-ink-2 leading-relaxed">
-            Every ticket is verified against holdout calibration curves. High blast radius or low confidence diverts safely to humans.
-          </p>
-        </div>
-
-        <div className="sentinel-card p-4">
-          <span className="font-mono text-[10.5px] font-bold text-emerald-700 tracking-wider uppercase mb-1 block">03 Defend Precedents</span>
-          <h3 className="font-bold text-[14px] flex items-center gap-1.5 text-ink mb-1">
-            <FileCheck size={15} className="text-emerald-600" />
-            Verifiable Extractive Drafts
-          </h3>
-          <p className="text-[12px] text-ink-2 leading-relaxed">
-            Auto-drafts cite verified internal precedent runbooks, providing operators with actionable and explainable answers.
-          </p>
-        </div>
-      </section>
-
-      {/* KPI Tiles Strip */}
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <MarketingMetricTile label="Open tickets" value={kpis.open} delta={kpis.open ? -8 : null} deltaPositiveIsGood />
-        <MarketingMetricTile label="Avg resolve" value={ms(kpis.p50)} suffix="" delta={-12} deltaPositiveIsGood />
-        <MarketingMetricTile label="Threats escalated" value={kpis.esc + kpis.review} delta={kpis.esc ? 5 : null} deltaPositiveIsGood={false} />
-        <MarketingMetricTile label="SLA on track" value={`${kpis.slaProxy}%`} delta={0.4} deltaPositiveIsGood />
-      </div>
-
-      {/* Holdout & Safety Exclusion Funnel */}
-      <section className="sentinel-card p-4">
-        <div className="flex items-center justify-between mb-3 border-b border-line pb-2">
-          <div className="flex items-center gap-2">
-            <GitMerge size={16} className="text-teal-700" />
-            <h3 className="font-bold text-[13.5px] text-ink">Holdout & Safety Exclusion Funnel</h3>
-            <span className="text-[11px] text-ink-3">· Real-time shift telemetry</span>
+        {picked.length > 0 && (
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-brand-100 bg-brand-50 px-4 py-2 text-[12px]">
+            <span className="font-medium text-brand-900">{picked.length} selected</span>
+            <span className="flex items-center gap-2">
+              <button onClick={() => bulk('accepted')} className="flex items-center gap-1 rounded border border-line-dark bg-white px-2.5 py-1 font-medium text-ink hover:border-teal-500 hover:text-teal-800">
+                <Check size={13} /> Accept suggestions
+              </button>
+              <button onClick={() => bulk('rejected')} className="flex items-center gap-1 rounded border border-line-dark bg-white px-2.5 py-1 font-medium text-ink hover:border-red-400 hover:text-red-800">
+                <X size={13} /> Reject
+              </button>
+            </span>
           </div>
-          <span className="font-mono text-[11px] text-teal-700 font-medium">Cutoff: 85.0% Confidence</span>
-        </div>
-        <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-center">
-          <div className="p-2.5 rounded-lg bg-slate-50 border border-line">
-            <div className="text-[18px] font-bold font-mono text-ink tabular">{kpis.n}</div>
-            <div className="text-[10.5px] font-medium text-ink-3 uppercase">Total Ingested</div>
-            <div className="text-[10px] font-mono text-teal-600 mt-0.5">100% Inflow</div>
-          </div>
-          <div className="p-2.5 rounded-lg bg-slate-50 border border-line">
-            <div className="text-[18px] font-bold font-mono text-emerald-700 tabular">{kpis.n}</div>
-            <div className="text-[10.5px] font-medium text-ink-3 uppercase">PII Sanitized</div>
-            <div className="text-[10px] font-mono text-emerald-600 mt-0.5">0 leaks</div>
-          </div>
-          <div className="p-2.5 rounded-lg bg-slate-50 border border-line">
-            <div className="text-[18px] font-bold font-mono text-ink tabular">{kpis.auto}</div>
-            <div className="text-[10.5px] font-medium text-ink-3 uppercase">Confidence Gated</div>
-            <div className="text-[10px] font-mono text-teal-600 mt-0.5">{kpis.autoPct}% Pass</div>
-          </div>
-          <div className="p-2.5 rounded-lg bg-slate-50 border border-line">
-            <div className="text-[18px] font-bold font-mono text-amber-700 tabular">{kpis.esc + kpis.review}</div>
-            <div className="text-[10.5px] font-medium text-ink-3 uppercase">Safety Holds</div>
-            <div className="text-[10px] font-mono text-amber-600 mt-0.5">{100 - kpis.autoPct}% Diverted</div>
-          </div>
-          <div className="p-2.5 rounded-lg bg-emerald-50/70 border border-emerald-200">
-            <div className="text-[18px] font-bold font-mono text-emerald-800 tabular">{kpis.auto}</div>
-            <div className="text-[10.5px] font-medium text-emerald-700 uppercase">Auto-Drafted</div>
-            <div className="text-[10px] font-mono text-emerald-700 mt-0.5">Ready for Send</div>
-          </div>
-        </div>
-      </section>
+        )}
 
-      {/* Main Table + Live Ticket Feed */}
-      <div className="grid gap-4 xl:grid-cols-[1fr_minmax(280px,340px)]">
-        <div className="min-w-0">
-          <section className="sentinel-card">
-            {/* Header controls and tabs */}
-            <div className="flex flex-wrap items-center justify-between gap-3 px-4 pt-3 pb-1 border-b border-line">
-              <div className="flex flex-wrap items-center gap-1.5">
-                {TABS.map((x) => {
-                  const n = tickets.filter((t) => (showResolved || t.status !== 'resolved') && x.test(t)).length;
-                  return (
-                    <button
-                      key={x.id}
-                      onClick={() => { setTab(x.id); setPage(1); setSelected(new Set()); }}
-                      className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-[12.5px] font-medium transition ${
-                        tab === x.id ? 'bg-teal-700 text-white shadow-2xs font-semibold' : 'bg-slate-100 text-ink-2 hover:bg-slate-200'
-                      }`}
-                    >
-                      {x.label}
-                      {(x.count || tab === x.id) && <span className="tabular text-[11px] opacity-80">{n}</span>}
+        <div className="thin-scroll overflow-x-auto px-3 sm:px-4">
+          <table className="w-full min-w-[1040px] border-collapse text-[12.5px]">
+            <thead>
+              <tr className="border-b border-line text-left">
+                <th className="w-9 py-2.5 pl-1">
+                  <input type="checkbox" checked={allChecked} onChange={toggleAll} aria-label="Select all on page" className="accent-brand-600" />
+                </th>
+                {COLUMNS.map((c) => (
+                  <th key={c.key} className="py-2.5 pr-3 font-semibold whitespace-nowrap text-ink-2">
+                    <button onClick={() => toggleSort(c.key)} className="flex items-center gap-1 hover:text-ink">
+                      {c.label}
+                      {sort.key === c.key ? (sort.dir === 'asc' ? <ArrowUp size={12} /> : <ArrowDown size={12} />) : <ArrowUpDown size={12} className="text-slate-300" />}
                     </button>
-                  );
-                })}
-              </div>
-
-              <label className="flex cursor-pointer items-center gap-2 text-[12px] font-medium text-ink-2">
-                <button
-                  role="switch"
-                  aria-checked={showResolved}
-                  onClick={() => setShowResolved((v) => !v)}
-                  className={`relative h-4 w-8 rounded-full transition ${showResolved ? 'bg-teal-600' : 'bg-slate-300'}`}
-                >
-                  <span className={`absolute top-0.5 h-3 w-3 rounded-full bg-white shadow transition ${showResolved ? 'left-[17px]' : 'left-0.5'}`} />
-                </button>
-                Show resolved
-              </label>
-            </div>
-
-            {picked.length > 0 && (
-              <div className="flex items-center justify-between bg-teal-50 px-4 py-2 text-[12px] border-b border-teal-200">
-                <span className="text-teal-900 font-medium">{picked.length} selected for bulk review</span>
-                <span className="flex items-center gap-2">
-                  <button onClick={() => bulk('accepted')} className="flex items-center gap-1 rounded bg-white border border-teal-300 px-2.5 py-1 text-teal-800 font-medium shadow-2xs hover:bg-teal-100">
-                    <Check size={13} /> Accept suggestions
-                  </button>
-                  <button onClick={() => bulk('rejected')} className="flex items-center gap-1 rounded bg-white border border-rose-300 px-2.5 py-1 text-rose-800 font-medium shadow-2xs hover:bg-rose-100">
-                    <X size={13} /> Reject
-                  </button>
-                </span>
-              </div>
-            )}
-
-            <div className="thin-scroll overflow-x-auto px-4">
-              <table className="w-full min-w-[1080px] border-collapse text-[12.5px]">
-                <thead>
-                  <tr className="border-b border-line text-left text-ink-3">
-                    <th className="w-9 py-2.5 pl-1">
-                      <input type="checkbox" checked={allChecked} onChange={toggleAll} aria-label="Select all on page" className="accent-teal-600" />
-                    </th>
-                    {COLUMNS.map((c) => (
-                      <th key={c.key} className="py-2.5 pr-3 font-semibold whitespace-nowrap text-ink">
-                        <button onClick={() => toggleSort(c.key)} className="flex items-center gap-1 hover:text-teal-700">
-                          {c.label}
-                          {sort.key === c.key ? (sort.dir === 'asc' ? <ArrowUp size={12} /> : <ArrowDown size={12} />) : <ArrowUpDown size={12} className="text-ink-3" />}
-                        </button>
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {visible.length === 0 && (
-                    <tr><td colSpan={COLUMNS.length + 1} className="py-10 text-center text-ink-3">No tickets match this view.</td></tr>
-                  )}
-                  {visible.map((t) => (
-                    <Row
-                      key={t.ticket_id}
-                      t={t}
-                      checked={selected.has(t.ticket_id)}
-                      onCheck={() => toggle(t.ticket_id)}
-                      onDetails={() => setDetails(t)}
-                      onReview={(v) => review(t.ticket_id, v, v === 'accepted' ? ['queue'] : undefined)}
-                    />
-                  ))}
-                </tbody>
-              </table>
-            </div>
-
-            {/* Pagination Controls */}
-            <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 text-[12px] border-t border-line">
-              <span className="text-ink-2">
-                Showing <b className="text-ink tabular">{rows.length ? (cur - 1) * pageSize + 1 : 0}–{Math.min(cur * pageSize, rows.length)}</b> of <b className="text-ink tabular">{rows.length}</b> items
-              </span>
-              <div className="flex items-center gap-1">
-                <button disabled={cur === 1} onClick={() => setPage(cur - 1)} className="grid h-7 w-7 place-items-center rounded hover:bg-slate-100 disabled:opacity-30" aria-label="Previous page"><ChevronLeft size={15} /></button>
-                {Array.from({ length: pages }, (_, i) => i + 1).map((p) => (
-                  <button key={p} onClick={() => setPage(p)} className={`h-7 min-w-7 rounded px-1.5 tabular ${p === cur ? 'bg-teal-700 font-semibold text-white' : 'hover:bg-slate-100'}`}>{p}</button>
+                  </th>
                 ))}
-                <button disabled={cur === pages} onClick={() => setPage(cur + 1)} className="grid h-7 w-7 place-items-center rounded hover:bg-slate-100 disabled:opacity-30" aria-label="Next page"><ChevronRight size={15} /></button>
-                <select value={pageSize} onChange={(e) => { setPageSize(Number(e.target.value)); setPage(1); }} className="ml-3 h-7 rounded border border-line bg-white px-1.5 text-ink">
-                  {[10, 25, 50].map((n) => <option key={n} value={n}>{n}</option>)}
-                </select>
-                <span className="ml-1 text-ink-3">per page</span>
-              </div>
-            </div>
-          </section>
+              </tr>
+            </thead>
+            <tbody>
+              {visible.length === 0 && (
+                <tr>
+                  <td colSpan={COLUMNS.length + 1} className="py-10 text-center text-ink-3">
+                    {query ? `No ${view.label.toLowerCase()} tickets match “${query}”.` : `No ${view.label.toLowerCase()} tickets right now.`}
+                  </td>
+                </tr>
+              )}
+              {visible.map((t) => (
+                <Row
+                  key={t.ticket_id}
+                  t={t}
+                  checked={selected.has(t.ticket_id)}
+                  onCheck={() => toggle(t.ticket_id)}
+                  onDetails={() => setDetails(t)}
+                  onReview={(v) => review(t.ticket_id, v, v === 'accepted' ? ['queue'] : undefined)}
+                />
+              ))}
+            </tbody>
+          </table>
         </div>
-        <LiveTicketFeed tickets={tickets} />
-      </div>
+
+        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-line px-3 py-3 text-[12px] sm:px-4">
+          <span className="text-ink-2">
+            Showing <b className="tabular text-ink">{rows.length ? (cur - 1) * pageSize + 1 : 0}–{Math.min(cur * pageSize, rows.length)}</b> of <b className="tabular text-ink">{rows.length}</b>
+          </span>
+          <div className="flex items-center gap-1">
+            <button disabled={cur === 1} onClick={() => setPage(cur - 1)} className="grid h-7 w-7 place-items-center rounded hover:bg-slate-100 disabled:opacity-30" aria-label="Previous page"><ChevronLeft size={15} /></button>
+            {Array.from({ length: pages }, (_, i) => i + 1).map((p) => (
+              <button key={p} onClick={() => setPage(p)} aria-current={p === cur ? 'page' : undefined} className={`tabular h-7 min-w-7 rounded px-1.5 ${p === cur ? 'bg-brand-800 font-semibold text-white' : 'hover:bg-slate-100'}`}>{p}</button>
+            ))}
+            <button disabled={cur === pages} onClick={() => setPage(cur + 1)} className="grid h-7 w-7 place-items-center rounded hover:bg-slate-100 disabled:opacity-30" aria-label="Next page"><ChevronRight size={15} /></button>
+            <select value={pageSize} onChange={(e) => { setPageSize(Number(e.target.value)); setPage(1); }} aria-label="Rows per page" className="ml-3 h-7 rounded border border-line bg-white px-1.5 text-ink">
+              {[10, 25, 50].map((n) => <option key={n} value={n}>{n}</option>)}
+            </select>
+            <span className="ml-1 text-ink-3">per page</span>
+          </div>
+        </div>
+      </section>
 
       {details && <DetailsModal ticket={details} onClose={() => setDetails(null)} />}
     </div>
+  );
+}
+
+// One bar, three segments: how the escalation gate split every ticket in this session.
+// Each segment and its legend link to the matching view.
+function TriageSplit({ tickets, active }) {
+  const n = tickets.length;
+  const masked = tickets.filter((t) => t.pii?.masked?.length).length;
+  const p50 = median(tickets.map((t) => t.latency_ms?.total).filter((x) => x != null));
+  const parts = OUTCOMES.map((o) => {
+    const v = VIEW_BY_ID[o.id];
+    return { ...o, label: v.label, count: tickets.filter((t) => t.gate.decision === v.decision).length };
+  });
+
+  return (
+    <section className="rounded-xl border border-line bg-white px-4 py-4 sm:px-5" aria-label="How the gate split this session's tickets">
+      <div className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-1">
+        <h2 className="text-[14px] font-semibold text-ink">
+          The gate sorted <span className="tabular">{n}</span> ticket{n === 1 ? '' : 's'}
+        </h2>
+        <p className="text-[12px] text-ink-3">
+          PII masked in {masked} before the model saw them{p50 != null && <>. Median triage {ms(p50)}</>}.
+        </p>
+      </div>
+
+      <div className="mt-3 flex h-2.5 gap-0.5 overflow-hidden rounded-full bg-slate-100">
+        {n > 0 && parts.map((p) => p.count > 0 && (
+          <a key={p.id} href={viewHref(p.id)} title={`${p.count} ${p.label.toLowerCase()}`} className={`${p.bar} transition-opacity hover:opacity-80`} style={{ width: `${(p.count / n) * 100}%` }} />
+        ))}
+      </div>
+
+      <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
+        {parts.map((p) => {
+          const on = active === p.id;
+          return (
+            <a
+              key={p.id}
+              href={viewHref(p.id)}
+              aria-current={on ? 'page' : undefined}
+              className={`group flex items-baseline gap-3 rounded-lg border px-3 py-2 transition ${on ? 'border-brand-600 bg-brand-50' : 'border-transparent hover:border-line hover:bg-slate-50'}`}
+            >
+              <span className={`tabular text-[26px] leading-none font-semibold ${p.text}`}>{p.count}</span>
+              <span className="min-w-0">
+                <span className="block text-[13px] font-semibold text-ink">{p.label}</span>
+                <span className="block text-[12px] text-ink-3">{p.what}</span>
+              </span>
+              <span className="tabular ml-auto text-[12px] text-ink-3">{n ? Math.round((p.count / n) * 100) : 0}%</span>
+            </a>
+          );
+        })}
+      </div>
+    </section>
   );
 }
 
@@ -387,11 +272,11 @@ function Row({ t, checked, onCheck, onDetails, onReview }) {
   const p1 = t.gate.reasons.filter((r) => r.severity === 'P1');
   const shown = (p1.length ? p1 : t.gate.reasons).slice(0, 2);
   return (
-    <tr className={`border-b border-line/70 hover:bg-teal-50/40 transition ${checked ? 'bg-teal-50/60' : ''}`}>
-      <td className="py-2.5 pl-1"><input type="checkbox" checked={checked} onChange={onCheck} aria-label={`Select ${t.ticket_id}`} className="accent-teal-600" /></td>
-      <td className="py-2.5 pr-3 whitespace-nowrap"><a href={ticketHref(t.ticket_id)} className="font-mono text-teal-700 font-semibold hover:underline">{t.ticket_id}</a></td>
+    <tr className={`border-b border-line/70 transition hover:bg-slate-50 ${checked ? 'bg-brand-50/70' : ''}`}>
+      <td className="py-2.5 pl-1"><input type="checkbox" checked={checked} onChange={onCheck} aria-label={`Select ${t.ticket_id}`} className="accent-brand-600" /></td>
+      <td className="py-2.5 pr-3 whitespace-nowrap"><a href={ticketHref(t.ticket_id)} className="font-mono text-[12px] font-medium text-brand-600 hover:underline">{t.ticket_id}</a></td>
       <td className="max-w-[300px] py-2.5 pr-3">
-        <div className="truncate font-medium text-ink" title={t.subject}>{t.subject}</div>
+        <a href={ticketHref(t.ticket_id)} className="block truncate font-medium text-ink hover:text-brand-700" title={t.subject}>{ticketTitle(t)}</a>
         {t.gate.reasons.length > 0 && (
           <div className="mt-0.5 flex gap-1">
             {shown.map((r) => <ReasonChip key={r.code} code={r.code} />)}
@@ -403,28 +288,25 @@ function Row({ t, checked, onCheck, onDetails, onReview }) {
       <td className="py-2.5 pr-3 whitespace-nowrap text-ink-2">{c.type.label}</td>
       <td className="py-2.5 pr-3"><PriorityBadge priority={c.priority.label} /></td>
       <td className="py-2.5 pr-3 whitespace-nowrap">
-        <span className="flex items-center gap-1.5">
+        <span className="flex items-center gap-1">
           <DecisionBadge decision={t.gate.decision} short />
-          <button onClick={onDetails} title="Why this decision?" className="rounded p-1 text-teal-700 hover:bg-teal-100"><Sparkles size={14} /></button>
+          <button onClick={onDetails} title="Why this decision?" aria-label={`Why ${t.ticket_id} got this decision`} className="rounded p-1 text-ink-3 hover:bg-slate-100 hover:text-brand-700"><Sparkles size={14} /></button>
         </span>
       </td>
       <td className="py-2.5 pr-3 whitespace-nowrap">
         <span className="flex items-center gap-2">
-          <span className={t.review === 'pending' ? 'font-medium text-amber-800' : t.review === 'rejected' ? 'text-ink-3 line-through' : 'text-ink-2'}>
-            {t.review === 'pending' && <Zap size={12} className="mr-1 inline text-amber-600" />}
-            {c.queue.label}
-          </span>
+          <span className={t.review === 'rejected' ? 'text-ink-3 line-through' : 'text-ink-2'}>{c.queue.label}</span>
           {t.review === 'pending' && (
             <span className="ml-auto flex gap-1">
-              <button onClick={() => onReview('accepted')} title="Accept suggestion" className="grid h-6 w-6 place-items-center rounded border border-line bg-white hover:border-emerald-500 hover:text-emerald-700 shadow-2xs"><Check size={13} /></button>
-              <button onClick={() => onReview('rejected')} title="Reject suggestion" className="grid h-6 w-6 place-items-center rounded border border-line bg-white hover:border-rose-500 hover:text-rose-700 shadow-2xs"><X size={13} /></button>
+              <button onClick={() => onReview('accepted')} title="Accept suggestion" aria-label={`Accept suggestion for ${t.ticket_id}`} className="grid h-6 w-6 place-items-center rounded border border-line bg-white hover:border-teal-500 hover:text-teal-700"><Check size={13} /></button>
+              <button onClick={() => onReview('rejected')} title="Reject suggestion" aria-label={`Reject suggestion for ${t.ticket_id}`} className="grid h-6 w-6 place-items-center rounded border border-line bg-white hover:border-red-400 hover:text-red-700"><X size={13} /></button>
             </span>
           )}
-          {t.review === 'accepted' && <Check size={13} className="text-emerald-600" aria-label="Accepted" />}
+          {t.review === 'accepted' && <Check size={13} className="text-teal-600" aria-label="Accepted" />}
         </span>
       </td>
       <td className="py-2.5 pr-3"><ConfidenceBar value={overallConfidence(t)} /></td>
-      <td className="tabular py-2.5 pr-1 whitespace-nowrap text-ink-3 font-mono text-[11.5px]">{shortDate(t.created_at)}</td>
+      <td className="tabular py-2.5 pr-1 whitespace-nowrap text-[12px] text-ink-3">{shortDate(t.created_at)}</td>
     </tr>
   );
 }
