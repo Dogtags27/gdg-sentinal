@@ -31,41 +31,66 @@ type rule struct {
 	// the right. RE2 has no lookaround, so this is checked in code.
 	bounded bool
 	full    *regexp.Regexp // the pattern anchored at both ends, set in init for bounded rules
-	// keep reports a match that looks like the pattern but is not PII.
-	keep func(string) bool
+	// keep reports a match that looks like the pattern but is not PII; prev is the character before it.
+	keep func(m string, prev byte) bool
 }
 
 // Order matters: each rule runs on the output of the previous ones, so the specific shapes (IBAN, card,
 // labelled account numbers, IPs) are replaced before the phone rule can claim their digits.
 var rules = []rule{
-	{kind: "EMAIL", re: regexp.MustCompile(`[\w.+-]+@[\w-]+(?:\.[\w-]+)+`)},
-	// Compact or 4-spaced; the last group can be shorter (German IBANs end in a 2-character group).
-	{kind: "IBAN", re: regexp.MustCompile(`\b[A-Z]{2}\d{2}(?: ?[A-Z0-9]{4}){2,7}(?: ?[A-Z0-9]{1,3})?\b`)},
+	{kind: "EMAIL", re: regexp.MustCompile(`[\p{L}\p{N}_.+-]+@[\p{L}\p{N}_-]+(?:\.[\p{L}\p{N}_-]+)+`)},
+	{
+		kind: "IBAN",
+		// Compact or 4-spaced, any letter case; the last group can be shorter (German IBANs end in 2 characters).
+		re: regexp.MustCompile(`(?i)\b[A-Z]{2}\d{2}(?: ?[A-Z0-9]{4}){2,7}(?: ?[A-Z0-9]{1,3})?\b`),
+		// Real IBANs are mostly digits; this keeps "ab12 this that" style text.
+		keep: func(m string, _ byte) bool { return len(digitsOf(m)) < 10 },
+	},
 	{
 		kind: "CARD",
 		re:   regexp.MustCompile(`\b(?:\d[ -]?){12,18}\d\b`),
-		// Grouped numbers are always masked (a mistyped card is still card data); a bare digit run must pass
-		// the Luhn check, so long order numbers stay readable.
-		keep: func(m string) bool { return !strings.ContainsAny(m, " -") && !luhn(digitsOf(m)) },
+		// A card passes Luhn or is grouped like one (4-4-4-4, 4-6-5), so a mistyped card is still masked.
+		// After "+" or with a leading 00 it is an international phone number, left to the phone rule.
+		keep: func(m string, prev byte) bool {
+			if prev == '+' || strings.HasPrefix(m, "00") {
+				return true
+			}
+			return !luhn(digitsOf(m)) && !cardShaped(m)
+		},
 	},
 	{
 		kind:  "ACCOUNT",
-		re:    regexp.MustCompile(`(?i)\b(account\s*(?:number|no\.?|nr\.?|#)|customer\s*(?:number|no\.?|id)|contract\s*(?:number|no\.?)|kontonummer|konto-?nr\.?|kundennummer|kunden-?nr\.?|vertragsnummer|vertrags-?nr\.?)(\s*(?:is\s+)?[:#]?\s*)([A-Z0-9][A-Z0-9-]{3,23})\b`),
+		re:    regexp.MustCompile(`(?i)\b(account\s*(?:number|no\.?|nr\.?|#)|customer\s*(?:number|no\.?|id|#)|contract\s*(?:number|no\.?)|kontonummer|konto-?nr\.?|kundennummern?|kunden-?nr\.?|kd\.?-?nr\.?|vertragsnummer|vertrags-?nr\.?)((?:\s+(?:is|ist|lautet|lautete|was|war))?\s*[:#]?\s*)([A-Z0-9][A-Z0-9-]{3,23}(?: \d[A-Z0-9-]{0,9}){0,6})\b`),
 		group: 3,
 		// The value must contain a digit, so "customer number is missing" stays as it is.
-		keep: func(m string) bool { return !strings.ContainsAny(m, "0123456789") },
+		keep: func(m string, _ byte) bool { return !strings.ContainsAny(m, "0123456789") },
 	},
-	{kind: "IP", re: regexp.MustCompile(`\b(?:25[0-5]|2[0-4]\d|1?\d?\d)(?:\.(?:25[0-5]|2[0-4]\d|1?\d?\d)){3}\b`)},
 	{
-		kind:    "PHONE",
-		re:      regexp.MustCompile(`(?:\+\d{1,3}[\s-]?)?\(?0?\d{2,4}\)?[\s\-/]?\d{3,4}[\s-]?\d{3,5}`),
+		kind: "IP",
+		// IPv4, full IPv6, and compressed IPv6 with "::".
+		re: regexp.MustCompile(`(?i)\b(?:(?:25[0-5]|2[0-4]\d|1?\d?\d)(?:\.(?:25[0-5]|2[0-4]\d|1?\d?\d)){3}|(?:[0-9a-f]{1,4}:){7}[0-9a-f]{1,4}|(?:[0-9a-f]{1,4}:){1,6}:(?:[0-9a-f]{1,4}:){0,5}[0-9a-f]{1,4})\b`),
+	},
+	{
+		kind: "PHONE",
+		// +49 (0)30 …, 089 / 1234567, 030 123 45 67, 030-123-45-67: a lead group, one separator, then up to
+		// five digit groups.
+		re:      regexp.MustCompile(`(?:\+\d{1,3}[ \t-]?(?:\(0\)[ \t]?)?)?\(?0?\d{2,5}\)?(?:[ \t]{0,2}/[ \t]{0,2}|[ \t-])?\d{2,8}(?:[ \t-]\d{2,8}){0,4}`),
 		bounded: true,
-		// A bare digit run such as an order number is not a phone: it needs +, (, a leading 0, or separators.
-		keep: func(m string) bool {
-			return !strings.ContainsAny(m[:1], "+(0") && !strings.ContainsAny(m, " \t\n\r\f-/)")
+		// Fewer than 7 digits (years, times) is not a phone number, and neither is a bare digit run such as
+		// an order number: it needs +, (, a leading 0, or separators.
+		keep: func(m string, _ byte) bool {
+			if len(digitsOf(m)) < 7 {
+				return true
+			}
+			return !strings.ContainsAny(m[:1], "+(0") && !strings.ContainsAny(m, " \t-/)")
 		},
 	},
 }
+
+// unicodeSpaces become plain spaces before masking, so "030 1234567" from a mail signature is caught.
+var unicodeSpaces = strings.NewReplacer(" ", " ", " ", " ", " ", " ", " ", " ", " ", " ",
+	" ", " ", " ", " ", " ", " ", " ", " ", " ", " ", " ", " ", " ", " ",
+	" ", " ", " ", " ", "　", " ")
 
 // maxBounded caps how far past a start a bounded match can end; phone numbers are far shorter.
 const maxBounded = 40
@@ -88,8 +113,10 @@ func NewMasker() *Masker {
 	return &Masker{numbers: map[string]map[string]int{}, counts: map[string]int{}}
 }
 
-// Mask replaces emails, IBANs, card numbers, labelled account numbers, IPv4 addresses and phone numbers.
+// Mask replaces emails, IBANs, card numbers, labelled account numbers, IP addresses and phone numbers.
+// Placeholders can make the text longer than the input.
 func (m *Masker) Mask(text string) string {
+	text = unicodeSpaces.Replace(text)
 	for _, r := range rules {
 		text = m.apply(r, text)
 	}
@@ -120,10 +147,11 @@ func (m *Masker) placeholder(kind, value string) string {
 		byValue = map[string]int{}
 		m.numbers[kind] = byValue
 	}
-	n, ok := byValue[value]
+	key := strings.ToLower(value)
+	n, ok := byValue[key]
 	if !ok {
 		n = len(byValue) + 1
-		byValue[value] = n
+		byValue[key] = n
 	}
 	m.counts[kind]++
 	return "[" + kind + "_" + strconv.Itoa(n) + "]"
@@ -142,7 +170,11 @@ func (m *Masker) apply(r rule, text string) string {
 			start, end = loc[2*r.group], loc[2*r.group+1]
 		}
 		value := text[start:end]
-		if r.keep != nil && r.keep(value) {
+		var prev byte
+		if start > 0 {
+			prev = text[start-1]
+		}
+		if r.keep != nil && r.keep(value, prev) {
 			pos = loc[1]
 			continue
 		}
@@ -214,6 +246,22 @@ func digitsOf(s string) string {
 		}
 	}
 	return b.String()
+}
+
+// cardShaped reports card-style grouping: 4-4-4-4 (optionally a short fifth group) or Amex 4-6-5.
+func cardShaped(m string) bool {
+	groups := strings.FieldsFunc(m, func(c rune) bool { return c == ' ' || c == '-' })
+	lens := make([]int, len(groups))
+	for i, g := range groups {
+		lens[i] = len(g)
+	}
+	switch {
+	case len(lens) == 3:
+		return lens[0] == 4 && lens[1] == 6 && (lens[2] == 5 || lens[2] == 4)
+	case len(lens) == 4 || len(lens) == 5:
+		return lens[0] == 4 && lens[1] == 4 && lens[2] == 4 && lens[3] == 4 && (len(lens) == 4 || lens[4] <= 3)
+	}
+	return false
 }
 
 func luhn(digits string) bool {

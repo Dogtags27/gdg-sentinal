@@ -135,45 +135,64 @@ function luhn(digits) {
   }
   return sum % 10 === 0;
 }
+const digitCount = (m) => m.replace(/\D/g, '').length;
+// Card-style grouping: 4-4-4-4 (optionally a short fifth group) or Amex 4-6-5.
+function cardShaped(m) {
+  const l = m.split(/[ -]+/).filter(Boolean).map((g) => g.length);
+  if (l.length === 3) return l[0] === 4 && l[1] === 6 && (l[2] === 5 || l[2] === 4);
+  if (l.length === 4 || l.length === 5) return l[0] === 4 && l[1] === 4 && l[2] === 4 && l[3] === 4 && (l.length === 4 || l[4] <= 3);
+  return false;
+}
 const PII_RULES = [
-  { type: 'EMAIL', re: /[\w.+-]+@[\w-]+(?:\.[\w-]+)+/g },
-  // Compact or 4-spaced, any final group length (DE IBANs end in a 2-char group).
-  { type: 'IBAN', re: /\b[A-Z]{2}\d{2}(?: ?[A-Z0-9]{4}){2,7}(?: ?[A-Z0-9]{1,3})?\b/g },
-  // Grouped numbers are always masked; a bare digit run must pass Luhn so long order numbers stay readable.
-  { type: 'CARD', re: /\b(?:\d[ -]?){12,18}\d\b/g, keep: (m) => !/[ -]/.test(m) && !luhn(m.replace(/\D/g, '')) },
+  { type: 'EMAIL', re: /[\p{L}\p{N}_.+-]+@[\p{L}\p{N}_-]+(?:\.[\p{L}\p{N}_-]+)+/gu },
+  // Compact or 4-spaced, any letter case; real IBANs are mostly digits, which keeps "ab12 this that" text.
+  { type: 'IBAN', re: /\b[A-Z]{2}\d{2}(?: ?[A-Z0-9]{4}){2,7}(?: ?[A-Z0-9]{1,3})?\b/gi, keep: (m) => digitCount(m) < 10 },
+  {
+    type: 'CARD',
+    re: /\b(?:\d[ -]?){12,18}\d\b/g,
+    // Luhn or card-style grouping; after "+" or with a leading 00 it is an international phone number.
+    keep: (m, prev) => prev === '+' || m.startsWith('00') || (!luhn(m.replace(/\D/g, '')) && !cardShaped(m)),
+  },
   {
     type: 'ACCOUNT',
     // Masks only the number after the label; the value needs a digit so "customer number is missing" stays.
-    re: /\b(account\s*(?:number|no\.?|nr\.?|#)|customer\s*(?:number|no\.?|id)|contract\s*(?:number|no\.?)|kontonummer|konto-?nr\.?|kundennummer|kunden-?nr\.?|vertragsnummer|vertrags-?nr\.?)(\s*(?:is\s+)?[:#]?\s*)([A-Z0-9][A-Z0-9-]{3,23})\b/gi,
+    re: /\b(account\s*(?:number|no\.?|nr\.?|#)|customer\s*(?:number|no\.?|id|#)|contract\s*(?:number|no\.?)|kontonummer|konto-?nr\.?|kundennummern?|kunden-?nr\.?|kd\.?-?nr\.?|vertragsnummer|vertrags-?nr\.?)((?:\s+(?:is|ist|lautet|lautete|was|war))?\s*[:#]?\s*)([A-Z0-9][A-Z0-9-]{3,23}(?: \d[A-Z0-9-]{0,9}){0,6})\b/gi,
     group: 3,
     keep: (m) => !/\d/.test(m),
   },
-  { type: 'IP', re: /\b(?:25[0-5]|2[0-4]\d|1?\d?\d)(?:\.(?:25[0-5]|2[0-4]\d|1?\d?\d)){3}\b/g },
+  // IPv4, full IPv6, and compressed IPv6 with "::".
+  { type: 'IP', re: /\b(?:(?:25[0-5]|2[0-4]\d|1?\d?\d)(?:\.(?:25[0-5]|2[0-4]\d|1?\d?\d)){3}|(?:[0-9a-f]{1,4}:){7}[0-9a-f]{1,4}|(?:[0-9a-f]{1,4}:){1,6}:(?:[0-9a-f]{1,4}:){0,5}[0-9a-f]{1,4})\b/gi },
   {
     type: 'PHONE',
-    re: /(?<![\w-])(?:\+\d{1,3}[\s-]?)?\(?0?\d{2,4}\)?[\s\-/]?\d{3,4}[\s-]?\d{3,5}(?![\w])/g,
-    // A bare digit run like an order number is not a phone: needs +, a leading 0, or separators.
-    keep: (m) => !/^[+(0]/.test(m) && !/[\s\-/)]/.test(m),
+    re: /(?<![\w-])(?:\+\d{1,3}[ \t-]?(?:\(0\)[ \t]?)?)?\(?0?\d{2,5}\)?(?:[ \t]{0,2}\/[ \t]{0,2}|[ \t-])?\d{2,8}(?:[ \t-]\d{2,8}){0,4}(?![\w])/g,
+    // Fewer than 7 digits (years, times) is not a phone, nor is a bare digit run like an order number.
+    keep: (m) => digitCount(m) < 7 || (!/^[+(0]/.test(m) && !/[ \t\-/)]/.test(m)),
   },
 ];
+// Plain spaces replace Unicode ones first, so "030 1234567" from a mail signature is caught.
+const UNICODE_SPACES = /[  -   　]/g;
 
-// One numbering per ticket ([EMAIL_1], [EMAIL_2], ...), shared by subject and body; a repeated value keeps
-// its number. Same as pii.Masker in Go.
+// One numbering per ticket ([EMAIL_1], [EMAIL_2], ...), shared by subject and body; a repeated value (any
+// letter case) keeps its number. Same as pii.Masker in Go.
 export function createMasker() {
   const numbers = {};
   const counts = {};
   const placeholder = (type, value) => {
+    const key = value.toLowerCase();
     const byValue = (numbers[type] ??= new Map());
-    if (!byValue.has(value)) byValue.set(value, byValue.size + 1);
+    if (!byValue.has(key)) byValue.set(key, byValue.size + 1);
     counts[type] = (counts[type] || 0) + 1;
-    return `[${type}_${byValue.get(value)}]`;
+    return `[${type}_${byValue.get(key)}]`;
   };
   return {
     mask(text) {
-      let out = text;
+      let out = text.replace(UNICODE_SPACES, ' ');
       for (const { type, re, keep, group } of PII_RULES) {
-        out = out.replace(re, (m, ...groups) => {
-          if (!group) return keep?.(m) ? m : placeholder(type, m);
+        out = out.replace(re, (m, ...args) => {
+          const groups = args.slice(0, -2);
+          const offset = args[args.length - 2];
+          const whole = args[args.length - 1];
+          if (!group) return keep?.(m, whole[offset - 1] ?? '') ? m : placeholder(type, m);
           const value = groups[group - 1];
           if (keep?.(value)) return m;
           return groups.slice(0, group - 1).join('') + placeholder(type, value);

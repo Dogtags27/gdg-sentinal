@@ -47,7 +47,8 @@ test('keywords do not over-fire on harmless mentions', () => {
   assert.ok(!codes(analyze({ subject: 'Training', body: 'We would like phishing awareness training for staff.' })).includes('SECURITY_INCIDENT'));
 });
 
-// Same table as the Go gateway's tests, so the mock and backend/internal/pii agree.
+// Same table as the Go gateway's tests, so the mock and backend/internal/pii agree. It lives in backend/
+// because the Go package owns the rules; this test needs the whole repo checked out.
 const PII_CASES = JSON.parse(readFileSync(new URL('../../backend/internal/pii/testdata/cases.json', import.meta.url), 'utf8'));
 
 test('PII masking matches the gateway cases', () => {
