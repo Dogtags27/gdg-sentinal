@@ -31,9 +31,6 @@ _artifacts: dict[str, Any] = {"status": "unknown", "detail": "not synced"}
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     s = get_settings()
-    if s.redis_url and s.embedding_provider():
-        pipeline.use_live_stages()
-        log.info("live stages enabled: embeddings=%s, generation=%s", s.embedding_provider(), s.generation_providers() or "none")
     if s.sync_artifacts and s.r2_configured:
         try:
             report = r2.sync_artifacts(s)
@@ -43,6 +40,12 @@ async def lifespan(_: FastAPI):
             _artifacts.update(status="down", detail=str(exc))
     else:
         _artifacts.update(status="unknown", detail="R2 not configured or SYNC_ARTIFACTS=false")
+    if s.redis_url and s.embedding_provider():
+        from engine.app import stages_live
+
+        pipeline.use_live_stages()
+        stages_live.apply_thresholds()  # loads the trained classifier when present
+        log.info("live stages enabled: embeddings=%s, generation=%s", s.embedding_provider(), s.generation_providers() or "none")
     yield
 
 

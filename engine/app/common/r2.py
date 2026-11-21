@@ -93,3 +93,42 @@ def sync_artifacts(settings: Settings | None = None, client: Any = None) -> Sync
         raise ArtifactError(f"No artifacts found under {prefix} in bucket {s.r2_bucket}. The ML engineer uploads them (ML-05).")
     log.info("artifacts %s: %d downloaded, %d cached", s.artifact_version, len(downloaded), len(skipped))
     return report
+
+
+def upload_dir(local: Path, prefix: str, settings: Settings | None = None, client: Any = None) -> list[str]:
+    """Upload every file under ``local`` to ``prefix`` in the bucket. Returns the keys written."""
+    s = settings or get_settings()
+    client = client or make_client(s)
+    keys = []
+    for f in sorted(p for p in Path(local).rglob("*") if p.is_file()):
+        key = prefix.rstrip("/") + "/" + f.relative_to(local).as_posix()
+        client.upload_file(str(f), s.r2_bucket, key)
+        keys.append(key)
+    return keys
+
+
+def main(argv: list[str] | None = None) -> int:
+    """python -m engine.app.common.r2 upload <local_dir> <prefix> | put <file> <key> | get <key> <file>"""
+    import sys
+
+    args = argv if argv is not None else sys.argv[1:]
+    s = get_settings()
+    c = make_client(s)
+    if len(args) == 3 and args[0] == "upload":
+        for k in upload_dir(Path(args[1]), args[2], s, c):
+            print("uploaded", k)
+    elif len(args) == 3 and args[0] == "put":
+        c.upload_file(args[1], s.r2_bucket, args[2])
+        print("uploaded", args[2])
+    elif len(args) == 3 and args[0] == "get":
+        Path(args[2]).parent.mkdir(parents=True, exist_ok=True)
+        c.download_file(s.r2_bucket, args[1], args[2])
+        print("downloaded", args[1], "->", args[2])
+    else:
+        print(main.__doc__)
+        return 2
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

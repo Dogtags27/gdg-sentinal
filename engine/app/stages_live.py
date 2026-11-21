@@ -54,9 +54,10 @@ def queue_nodes() -> list[R.QueueNode]:
 
 def reset() -> None:
     """Forget the Redis connection and cached queue nodes (tests, or after re-indexing)."""
-    global _redis, _nodes, _index_checked
+    global _redis, _nodes, _index_checked, _model, _model_checked
     with _lock:
         _redis, _nodes, _index_checked = None, None, False
+        _model, _model_checked = None, False
 
 
 # ---- language -----------------------------------------------------------------
@@ -121,8 +122,99 @@ def _head(probs: dict[str, float]) -> tuple[str, float]:
     return label, probs[label]
 
 
+# ---- trained model + thresholds (ML engineer's artifacts) -----------------------
+
+_model: Any = None
+_model_checked = False
+
+
+def model_dirs() -> list[Any]:
+    """Where the trained bundle can live: the R2-synced cache (production) or ml/artifacts (local)."""
+    from pathlib import Path
+
+    from engine.app.analyze.classify import DEFAULT_MODEL_DIR
+
+    return [get_settings().artifact_cache / "models", Path(DEFAULT_MODEL_DIR)]
+
+
+def classifier() -> Any:
+    """The trained Classifier, or None when no bundle is available (then the neighbour vote is used)."""
+    global _model, _model_checked
+    with _lock:
+        if _model_checked:
+            return _model
+    found = None
+    for d in model_dirs():
+        if (d / "classifier.joblib").exists() and (d / "thresholds.json").exists():
+            from engine.app.analyze.classify import Classifier
+
+            found = Classifier.load(d)
+            log.info("classifier loaded from %s", d)
+            break
+    if found is None:
+        log.warning("no trained classifier found in %s; using the neighbour vote", [str(d) for d in model_dirs()])
+    with _lock:
+        _model, _model_checked = found, True
+    return found
+
+
+def thresholds() -> dict[str, Any]:
+    m = classifier()
+    return dict(m.th) if m is not None else {}
+
+
+def apply_thresholds() -> dict[str, Any]:
+    """Configure the gate from the tuned thresholds (falls back to the measured defaults)."""
+    from engine.app import pipeline
+
+    th = thresholds()
+    gate_kwargs = {
+        "high_priority_threshold": float(th.get("priority_high_threshold", 0.38)),
+        # NO_PRECEDENT cut-off for live tickets. Measured on the full OpenAI index: off-topic top-1 <= 0.28,
+        # hand-typed support tickets >= 0.37, held-out dataset tickets >= 0.59. retrieval_threshold (0.83)
+        # is the ML precision metric for "useful precedent" and would flag every hand-typed ticket.
+        "precedent_similarity_threshold": float(th.get("no_precedent_threshold", 0.35)),
+    }
+    pipeline.reset_gate(**gate_kwargs)
+    # The recall-tuned incident rule (P(Incident) >= incident_threshold) reaches 0.93 holdout recall but flags
+    # ~39% of tickets for on-call (e.g. invoice requests). Off by default; the argmax rule with the tuned P(high)
+    # threshold gives 0.87 recall at 0.53 precision. Set "gate_incident_rule": true in thresholds.json to switch.
+    use_rule = bool(th.get("gate_incident_rule", False)) and "incident_threshold" in th
+    pipeline.INCIDENT_THRESHOLD = float(th["incident_threshold"]) if use_rule else None
+    log.info("gate thresholds: %s, incident_threshold=%s", gate_kwargs, pipeline.INCIDENT_THRESHOLD)
+    return {**gate_kwargs, "incident_threshold": pipeline.INCIDENT_THRESHOLD}
+
+
+def _contract_heads(out: dict[str, Any], hits: list[Any]) -> dict[str, Any]:
+    t, q, p = out["type"]["probs"], out["queue"]["probs"], out["priority"]["probs"]
+    t = {c: float(t.get(c, 0.0)) for c in TYPES}
+    p = {c: float(p.get(c, 0.0)) for c in PRIORITIES}
+    top5 = dict(sorted(((k, float(v)) for k, v in q.items()), key=lambda kv: kv[1], reverse=True)[:5])
+    t_label, t_conf = _head(t)
+    q_label, q_conf = _head(top5)
+    p_label, p_conf = _head(p)
+    return {
+        "type": {"label": t_label, "confidence": t_conf, "probs": t},
+        "queue": {
+            "label": q_label,
+            "confidence": q_conf,
+            "probs": top5,
+            "votes": sum(1 for h in hits if h.fields.get("queue") == q_label),
+            "k": len(hits),
+        },
+        "priority": {"label": p_label, "confidence": p_conf, "probs": p, "p_high": p["high"]},
+    }
+
+
 def classify_stage(state: TicketState) -> None:
     hits = state.global_neighbours
+    model = classifier()
+    if model is not None:
+        from types import SimpleNamespace
+
+        votes = [SimpleNamespace(payload=h.fields, score=h.score) for h in hits]  # vote_probs reads .payload
+        state.classification = _contract_heads(model.predict(state.subject, state.body, hits=votes), hits)
+        return
     queues = sorted({h.fields.get("queue", "") for h in hits if h.fields.get("queue")}) or ["General Inquiry"]
     t, q, p = _vote(hits, "type", list(TYPES)), _vote(hits, "queue", queues), _vote(hits, "priority", list(PRIORITIES))
     top5 = dict(sorted(q.items(), key=lambda kv: kv[1], reverse=True)[:5])
@@ -166,7 +258,17 @@ def route_and_search_stage(state: TicketState) -> None:
         raise RuntimeError("No query embedding: the global search stage failed earlier.")
     q = np.asarray(state.query_embedding, dtype=np.float32)
     queue_probs = (state.classification or {}).get("queue", {}).get("probs", {})
-    res = R.retrieve(_conn(), q, queue_nodes(), queue_probs, k=5, count=False)
+    th = thresholds()
+    res = R.retrieve(
+        _conn(), q, queue_nodes(), queue_probs, k=5, count=False,
+        alpha=float(th.get("route_alpha", 0.6)),
+        top_n=int(th.get("route_top_n", 2)),
+        confident=float(th.get("route_confident", 0.80)),
+        # Fall back to the global search on the margin rule only; an absolute cut at retrieval_threshold
+        # (0.83) would bypass the queue routing for every hand-typed ticket.
+        min_top1_similarity=float(th.get("route_min_top1", 0.0)),
+        margin=float(th.get("fallback_margin", 0.05)),
+    )
     state.precedents = [_precedent(h) for h in res.hits]
     state.evidence = {h.ticket_id: h.fields.get("answer", "") for h in res.hits}
     ranked = sorted(res.route_scores.items(), key=lambda kv: kv[1], reverse=True)[:3]

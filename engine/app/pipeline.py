@@ -127,6 +127,19 @@ def _iso(epoch: float) -> datetime:
     return datetime.fromtimestamp(epoch, tz=timezone.utc)
 
 
+# Recall-tuned high-priority rule from the ML engineer (ml/PROGRESS.md): treat a ticket as an Incident for
+# the gate when P(Incident) >= this threshold, not only when Incident is the argmax type (the argmax rule
+# misses ~15% of true incidents). None keeps the gate's own argmax rule. Set by stages_live.apply_thresholds.
+INCIDENT_THRESHOLD: float | None = None
+
+
+def _gate_type(cls: dict[str, Any]) -> str:
+    p_incident = cls["type"]["probs"].get("Incident", 0.0)
+    if INCIDENT_THRESHOLD is not None and p_incident >= INCIDENT_THRESHOLD:
+        return "Incident"
+    return cls["type"]["label"]
+
+
 def run_gate(s: TicketState) -> None:
     cls = s.classification or {}
     draft = s.draft or {}
@@ -135,7 +148,7 @@ def run_gate(s: TicketState) -> None:
             ticket_id=s.ticket_id,
             text=s.text,
             detected_language=(s.language or {}).get("code", "unknown"),
-            pred_type=cls["type"]["label"],
+            pred_type=_gate_type(cls),
             pred_queue=cls["queue"]["label"],
             prob_high_priority=cls["priority"]["p_high"],
             overall_confidence=min(cls["type"]["confidence"], cls["priority"]["confidence"]),
