@@ -14,7 +14,7 @@ type Config struct {
 	MockEngine    bool          // MOCK_ENGINE: answer from the built-in mock instead of the Python engine
 	EngineURL     string        // ENGINE_URL: base URL of the private Python engine
 	EngineTimeout time.Duration // ENGINE_TIMEOUT: 12 s in contract v1, under the console's 20 s request timeout
-	StaticDir     string        // STATIC_DIR: built frontend (npm run build); empty disables static serving
+	WebDir        string        // WEB_DIR: built console (npm run build); /web in infra/Dockerfile.gateway; empty disables it
 	InsightsDir   string        // INSIGHTS_DIR: Data analyst's exported JSON files
 	RatePerMinute int           // RATE_LIMIT_PER_MIN: triage requests per client per minute; 0 disables
 	RateBurst     int           // RATE_LIMIT_BURST: requests a client may send at once
@@ -25,7 +25,7 @@ func Load() (Config, error) {
 	c := Config{
 		Port:          env("PORT", "8080"),
 		EngineURL:     strings.TrimRight(env("ENGINE_URL", "http://localhost:8000"), "/"),
-		StaticDir:     env("STATIC_DIR", "../frontend/dist"),
+		WebDir:        env("WEB_DIR", "../frontend/dist"),
 		InsightsDir:   env("INSIGHTS_DIR", "../analytics/insights"),
 		EngineTimeout: 12 * time.Second,
 	}

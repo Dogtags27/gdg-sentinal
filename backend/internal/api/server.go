@@ -44,7 +44,7 @@ var insightsFiles = map[string]string{
 type Server struct {
 	Engine      engine.Engine
 	Limiter     *ratelimit.Limiter
-	StaticDir   string
+	WebDir      string
 	InsightsDir string
 	TrustProxy  bool
 	Log         *slog.Logger
@@ -244,13 +244,13 @@ func (s *Server) insights(w http.ResponseWriter, r *http.Request) {
 // static serves the built console. Hashed files under /assets/ are cached for a year; everything else,
 // including index.html, is revalidated so a deploy shows up on the next load.
 func (s *Server) static() http.Handler {
-	if s.StaticDir == "" {
+	if s.WebDir == "" {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			writeError(w, r, http.StatusNotFound, "NOT_FOUND", "Static serving is off (STATIC_DIR is empty).")
+			writeError(w, r, http.StatusNotFound, "NOT_FOUND", "Static serving is off (WEB_DIR is empty).")
 		})
 	}
-	files := http.FileServer(http.Dir(s.StaticDir))
-	index := filepath.Join(s.StaticDir, "index.html")
+	files := http.FileServer(http.Dir(s.WebDir))
+	index := filepath.Join(s.WebDir, "index.html")
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if _, err := os.Stat(index); err != nil {
 			writeError(w, r, http.StatusNotFound, "NOT_FOUND", "The console is not built. Run npm run build in frontend/.")
@@ -261,7 +261,7 @@ func (s *Server) static() http.Handler {
 		} else {
 			w.Header().Set("Cache-Control", "no-cache")
 		}
-		clean := filepath.Join(s.StaticDir, filepath.FromSlash(filepath.Clean("/"+r.URL.Path)))
+		clean := filepath.Join(s.WebDir, filepath.FromSlash(filepath.Clean("/"+r.URL.Path)))
 		info, err := os.Stat(clean)
 		if err != nil && strings.HasPrefix(r.URL.Path, "/assets/") {
 			// A stale tab asking for an old chunk must not get index.html cached for a year.

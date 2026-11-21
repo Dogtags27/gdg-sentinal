@@ -53,7 +53,7 @@ var contractCodes = map[string]bool{"INVALID_JSON": true, "VALIDATION_ERROR": tr
 
 func newServer(t *testing.T, eng engine.Engine) *Server {
 	t.Helper()
-	return &Server{Engine: eng, Log: slog.New(slog.NewTextHandler(io.Discard, nil)), StaticDir: t.TempDir(), InsightsDir: t.TempDir()}
+	return &Server{Engine: eng, Log: slog.New(slog.NewTextHandler(io.Discard, nil)), WebDir: t.TempDir(), InsightsDir: t.TempDir()}
 }
 
 func do(t *testing.T, h http.Handler, method, path, body string) (*httptest.ResponseRecorder, map[string]any) {
@@ -292,9 +292,9 @@ func TestStatic(t *testing.T) {
 	if rec, out := do(t, h, "GET", "/", ""); rec.Code != 404 || errField(out, "code") != "NOT_FOUND" {
 		t.Errorf("unbuilt console: %d %s", rec.Code, rec.Body)
 	}
-	os.WriteFile(filepath.Join(s.StaticDir, "index.html"), []byte("<html>console</html>"), 0o644)
-	os.MkdirAll(filepath.Join(s.StaticDir, "assets"), 0o755)
-	os.WriteFile(filepath.Join(s.StaticDir, "assets", "app-123.js"), []byte("js"), 0o644)
+	os.WriteFile(filepath.Join(s.WebDir, "index.html"), []byte("<html>console</html>"), 0o644)
+	os.MkdirAll(filepath.Join(s.WebDir, "assets"), 0o755)
+	os.WriteFile(filepath.Join(s.WebDir, "assets", "app-123.js"), []byte("js"), 0o644)
 	for path, want := range map[string]string{"/": "console", "/board": "console", "/assets/": "console", "/assets/app-123.js": "js"} {
 		rec, _ := do(t, h, "GET", path, "")
 		if rec.Code != 200 || !strings.Contains(rec.Body.String(), want) {

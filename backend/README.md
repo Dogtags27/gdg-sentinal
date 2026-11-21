@@ -7,8 +7,8 @@ engine (:8000) and Redis stay private. Every message follows the frozen API cont
 ```bash
 cd backend
 go test ./...
-go run ./cmd/gateway            # http://localhost:8080, mock engine by default
-MOCK_ENGINE=false go run ./cmd/gateway   # calls the engine at ENGINE_URL
+go run ./cmd/api            # http://localhost:8080, mock engine by default
+MOCK_ENGINE=false go run ./cmd/api   # calls the engine at ENGINE_URL
 ```
 
 To get the whole app from the gateway, build the console first (`cd frontend && npm run build`); the gateway
@@ -19,7 +19,7 @@ serves `../frontend/dist`. For the Vite dev server instead, put `VITE_USE_MOCK=f
 
 | Task | Where |
 |---|---|
-| FS-02 skeleton: request rules, IDs, error envelope, JSON logs (never ticket text), panic recovery, graceful shutdown | `cmd/gateway`, `internal/api` |
+| FS-02 skeleton: request rules, IDs, error envelope, JSON logs (never ticket text), panic recovery, graceful shutdown | `cmd/api`, `internal/api` |
 | FS-03 mock mode (`MOCK_ENGINE=true`): answers with the contract's example responses, picked by keyword, with the real IDs, times and masked text | `internal/engine/mock.go` |
 | FS-08 real engine (`MOCK_ENGINE=false`): `POST {ENGINE_URL}/v1/triage` with a 12 s timeout, `GET /healthz` | `internal/engine/client.go` |
 | FS-15 PII guardrail: `[EMAIL_1]`, `[PHONE_1]`, `[IP_1]`, `[IBAN_1]`, `[CARD_1]`, `[ACCOUNT_1]`, numbered per ticket | `internal/pii` |
@@ -51,7 +51,7 @@ Mock answers come from `internal/engine/examples/`, copies of `contracts/example
 | `MOCK_ENGINE` | `true` | `false` to call the Python engine |
 | `ENGINE_URL` | `http://localhost:8000` | `http://engine:8000` in docker-compose |
 | `ENGINE_TIMEOUT` | `12s` | contract v1 |
-| `STATIC_DIR` | `../frontend/dist` | empty string turns static serving off |
+| `WEB_DIR` | `../frontend/dist` | empty string turns static serving off |
 | `INSIGHTS_DIR` | `../analytics/insights` | |
 | `RATE_LIMIT_PER_MIN` | `60` | per client IP; `0` turns it off |
 | `RATE_LIMIT_BURST` | `10` | requests allowed at once |

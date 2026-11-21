@@ -33,7 +33,7 @@ func main() {
 	srv := &api.Server{
 		Engine:      eng,
 		Limiter:     ratelimit.New(cfg.RatePerMinute, cfg.RateBurst),
-		StaticDir:   cfg.StaticDir,
+		WebDir:      cfg.WebDir,
 		InsightsDir: cfg.InsightsDir,
 		TrustProxy:  cfg.TrustProxy,
 		Log:         log,
@@ -51,7 +51,7 @@ func main() {
 	defer stop()
 	go func() {
 		log.Info("gateway listening", "addr", hs.Addr, "mode", eng.Mode(), "engine_url", cfg.EngineURL,
-			"static_dir", cfg.StaticDir, "rate_limit_per_min", cfg.RatePerMinute)
+			"web_dir", cfg.WebDir, "rate_limit_per_min", cfg.RatePerMinute)
 		if err := hs.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			log.Error("server stopped", "err", err)
 			stop()
