@@ -1,0 +1,376 @@
+import { useEffect, useMemo, useState } from 'react';
+import {
+  ArrowLeft, Check, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Copy, FileText, Lock, Send, ShieldAlert,
+  Siren, Sparkles, ThumbsDown, ThumbsUp, TriangleAlert, UserCheck, XCircle,
+} from 'lucide-react';
+import { ConfidenceBar, DecisionBadge, LangBadge, Pill, PriorityBadge, StatusBadge } from '../components/Badges.jsx';
+import DraftText from '../components/DraftText.jsx';
+import LatencyStrip from '../components/LatencyStrip.jsx';
+import { useTickets } from '../state/tickets.jsx';
+import { DECISIONS, GATE_THRESHOLDS, LANGUAGES, PRIORITIES, REASONS } from '../lib/constants.js';
+import { dateTime, pct, timeAgo } from '../lib/format.js';
+import { go, ticketHref } from '../lib/useHashRoute.js';
+
+function Section({ title, icon: Icon, right, children, defaultOpen = true }) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <section className="rounded border border-line bg-white">
+      <header className="flex items-center gap-2 px-4 py-2.5">
+        <button onClick={() => setOpen((o) => !o)} className="flex items-center gap-2 text-[14px] font-semibold text-ink" aria-expanded={open}>
+          {open ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
+          {Icon && <Icon size={15} className="text-brand-600" />}
+          {title}
+        </button>
+        <div className="ml-auto">{right}</div>
+      </header>
+      {open && <div className="px-4 pb-4">{children}</div>}
+    </section>
+  );
+}
+
+function SideCard({ title, children }) {
+  return (
+    <section className="rounded border border-line bg-white px-3.5 py-3">
+      {title && <h3 className="mb-2 text-[13.5px] font-semibold">{title}</h3>}
+      {children}
+    </section>
+  );
+}
+
+function KV({ k, children }) {
+  return (
+    <div className="mb-2.5 last:mb-0">
+      <div className="text-[11.5px] text-ink-3">{k}</div>
+      <div className="mt-0.5 text-[12.5px]">{children}</div>
+    </div>
+  );
+}
+
+export default function TicketDetail({ id }) {
+  const { tickets, byId, dispatch, move, review, toast, history } = useTickets();
+  const t = byId(id);
+
+  const ordered = useMemo(() => [...tickets].sort((a, b) => b.created_at.localeCompare(a.created_at)), [tickets]);
+  const idx = ordered.findIndex((x) => x.ticket_id === id);
+
+  useEffect(() => {
+    if (t) dispatch({ type: 'VISIT', id });
+  }, [id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  if (!t) {
+    return (
+      <div className="p-10 text-center">
+        <p className="text-[14px] font-medium">Ticket {id} isn't in this session.</p>
+        <a href="#/" className="mt-2 inline-block text-brand-600 hover:underline">Back to the dashboard</a>
+      </div>
+    );
+  }
+
+  const c = t.classification;
+  // A gated draft stays held until a person accepts the triage; a draft that failed validation never sends.
+  const held = t.gate.decision !== 'AUTO_DRAFT' && t.review !== 'accepted';
+  const invalid = !t.draft.validation.passed;
+  const sendBlocked = invalid
+    ? 'This draft failed validation and cannot be sent. Write the reply by hand or escalate.'
+    : held
+      ? 'Held for review. Accept the triage suggestions below to release the draft.'
+      : null;
+  const activity = history.filter((h) => h.id === t.ticket_id).slice(0, 6);
+
+  const copyDraft = async () => {
+    try {
+      await navigator.clipboard.writeText(t.draft.text);
+      toast('Draft copied to clipboard', 'good');
+    } catch {
+      toast('Clipboard is blocked in this browser', 'critical');
+    }
+  };
+  const act = (status, msg, tone = 'info') => {
+    move(t.ticket_id, status);
+    toast(msg, tone);
+  };
+
+  return (
+    <div className="flex min-h-full flex-col">
+      {/* Title bar */}
+      <div className="flex items-center gap-3 bg-brand-700 px-4 py-2 text-white">
+        <a href="#/" className="rounded p-1 hover:bg-white/10" title="Back to dashboard"><ArrowLeft size={16} /></a>
+        <h1 className="min-w-0 truncate text-[15px]">
+          Ticket <span className="text-white/60">·</span> {t.ticket_id} <span className="text-white/60">·</span> {t.subject}
+        </h1>
+        <div className="ml-auto flex shrink-0 items-center gap-1 text-[12.5px]">
+          <button disabled={idx <= 0} onClick={() => go(ticketHref(ordered[idx - 1].ticket_id))} className="rounded p-1 hover:bg-white/10 disabled:opacity-30" aria-label="Previous ticket"><ChevronLeft size={16} /></button>
+          <span className="tabular">{idx + 1} of {ordered.length}</span>
+          <button disabled={idx >= ordered.length - 1} onClick={() => go(ticketHref(ordered[idx + 1].ticket_id))} className="rounded p-1 hover:bg-white/10 disabled:opacity-30" aria-label="Next ticket"><ChevronRight size={16} /></button>
+        </div>
+      </div>
+
+      {/* Toolbar */}
+      <div className="flex flex-wrap items-center gap-1.5 border-b border-line bg-white px-4 py-1.5">
+        <ToolButton
+          icon={Send}
+          onClick={() => act('resolved', `Reply sent for ${t.ticket_id}`, 'good')}
+          disabled={t.status === 'resolved' || Boolean(sendBlocked)}
+          title={sendBlocked ?? 'Send the reply and resolve the ticket'}
+        >Send draft</ToolButton>
+        <ToolButton icon={UserCheck} onClick={() => act('review', `${t.ticket_id} sent to human review`)} disabled={t.status === 'review'}>Send to review</ToolButton>
+        <ToolButton icon={Siren} onClick={() => act('escalated', `${t.ticket_id} escalated to on-call`, 'critical')} disabled={t.status === 'escalated'}>Escalate</ToolButton>
+        <ToolButton icon={Copy} onClick={copyDraft}>Copy draft</ToolButton>
+        <ToolButton icon={CheckCircle2} onClick={() => act('resolved', `${t.ticket_id} closed`, 'good')} disabled={t.status === 'resolved'}>Close</ToolButton>
+        <span className="ml-auto"><StatusBadge status={t.status} /></span>
+      </div>
+
+      <div className="grid flex-1 grid-cols-1 gap-3 p-3 lg:grid-cols-[230px_minmax(0,1fr)_280px]">
+        {/* Left */}
+        <aside className="space-y-3">
+          <SideCard>
+            <KV k="Language"><span className="flex items-center gap-1.5"><LangBadge code={t.language.code} /> {LANGUAGES[t.language.code] ?? t.language.code} <span className="text-ink-3">{pct(t.language.confidence)}</span></span></KV>
+            <KV k="Status"><StatusBadge status={t.status} /></KV>
+            <KV k="Priority"><PriorityBadge priority={c.priority.label} /></KV>
+            <KV k="Gate decision"><DecisionBadge decision={t.gate.decision} /></KV>
+          </SideCard>
+          <SideCard title="Classification">
+            <KV k="Type"><div className="flex items-center justify-between gap-2"><span>{c.type.label}</span><ConfidenceBar value={c.type.confidence} width="w-10" /></div></KV>
+            <KV k="Queue"><div className="flex items-center justify-between gap-2"><span className="min-w-0 truncate" title={c.queue.label}>{c.queue.label}</span><ConfidenceBar value={c.queue.confidence} width="w-10" /></div>
+              <div className="text-[11px] text-ink-3">{c.queue.votes}/{c.queue.k} retrieval votes agree</div></KV>
+            <KV k="Priority"><div className="flex items-center justify-between gap-2"><span>{PRIORITIES[c.priority.label]?.label}</span><ConfidenceBar value={c.priority.confidence} width="w-10" /></div>
+              <div className="text-[11px] text-ink-3">P(high) = {c.priority.p_high.toFixed(2)}</div></KV>
+          </SideCard>
+          <SideCard title="Gateway">
+            <div className="flex items-start gap-2 text-[12px] text-ink-2">
+              <Lock size={14} className="mt-px shrink-0 text-brand-600" />
+              {t.pii?.masked?.length ? (
+                <span>PII masked before the engine: {t.pii.masked.map((m) => `${m.count} ${m.type.toLowerCase()}`).join(', ')}</span>
+              ) : (
+                <span>No PII found in the subject or body.</span>
+              )}
+            </div>
+          </SideCard>
+        </aside>
+
+        {/* Center */}
+        <div className="min-w-0 space-y-3">
+          <section className="flex gap-4 rounded border border-line bg-white px-4 py-3.5">
+            <FileText size={34} strokeWidth={1.4} className="shrink-0 text-brand-600" />
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <Pill className="rounded bg-brand-600 text-white">{c.type.label}</Pill>
+                <span className="text-[12.5px] text-ink-2">{c.queue.label}</span>
+              </div>
+              <div className="mt-1 text-[12px] text-ink-3">{t.ticket_id}</div>
+              <h2 className="mt-1 text-[17px] font-semibold">{t.subject}</h2>
+              <div className="mt-1 text-[12px] text-ink-2">
+                <b>Created</b> {dateTime(t.created_at)} <span className="mx-1 text-ink-3">·</span> <b>Triaged</b> {timeAgo(t.processed_at)}
+              </div>
+            </div>
+          </section>
+
+          <Suggestions key={t.ticket_id} t={t} review={review} toast={toast} />
+
+          <Section title={`Escalation gate (${t.gate.reasons.length})`} icon={ShieldAlert} right={<DecisionBadge decision={t.gate.decision} />}>
+            {t.gate.reasons.length === 0 ? (
+              <p className="flex items-center gap-2 text-[12.5px] text-emerald-800"><CheckCircle2 size={15} /> No reasons fired. The grounded draft can go out after a quick check.</p>
+            ) : (
+              <ul className="space-y-1.5">
+                {t.gate.reasons.map((r) => (
+                  <li key={r.code} className={`flex items-start gap-2.5 rounded border px-3 py-2 ${r.severity === 'P1' ? 'border-red-200 bg-red-50/60' : 'border-amber-200 bg-amber-50/60'}`}>
+                    {r.severity === 'P1' ? <ShieldAlert size={15} className="mt-px text-red-700" /> : <TriangleAlert size={15} className="mt-px text-amber-700" />}
+                    <div className="min-w-0">
+                      <div className="text-[12.5px]"><b>{r.severity} · {REASONS[r.code]?.label ?? r.code}</b> <code className="ml-1 text-[11px] text-ink-3">{r.code}</code></div>
+                      <div className="text-[12px] text-ink-2">{r.detail}</div>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </Section>
+
+          <Section title="Description" icon={null}>
+            <p className="text-[13px] leading-relaxed whitespace-pre-wrap text-ink">{t.body}</p>
+          </Section>
+
+          <Section
+            title="Reply draft"
+            icon={Sparkles}
+            right={
+              <span className="flex items-center gap-2">
+                <LangBadge code={t.draft.language} />
+                <Pill className={t.draft.mode === 'extractive' ? 'bg-amber-100 text-amber-800' : 'bg-brand-100 text-brand-700'}>
+                  {t.draft.mode === 'extractive' ? 'Extractive fallback' : 'Generated'}
+                </Pill>
+              </span>
+            }
+          >
+            {invalid ? (
+              <div className="mb-3 flex items-start gap-2 rounded border border-red-200 bg-red-50 px-3 py-2 text-[12px] text-red-900">
+                <XCircle size={14} className="mt-px shrink-0" />
+                Blocked: this draft failed validation and cannot be sent. Write the reply by hand or escalate.
+              </div>
+            ) : held ? (
+              <div className="mb-3 flex items-start gap-2 rounded border border-amber-200 bg-amber-50 px-3 py-2 text-[12px] text-amber-900">
+                <Lock size={14} className="mt-px shrink-0" />
+                Held: {DECISIONS[t.gate.decision].method.toLowerCase()}. Accept the triage suggestions to release this draft for sending.
+              </div>
+            ) : t.gate.decision !== 'AUTO_DRAFT' && (
+              <div className="mb-3 flex items-start gap-2 rounded border border-emerald-200 bg-emerald-50 px-3 py-2 text-[12px] text-emerald-900">
+                <CheckCircle2 size={14} className="mt-px shrink-0" />
+                Released: a person accepted the triage. Check the draft before sending.
+              </div>
+            )}
+            <div className="rounded border border-line bg-slate-50/70 px-4 py-3">
+              <DraftText text={t.draft.text} known={t.precedents.map((p) => p.ticket_id)} />
+            </div>
+            <div className="mt-2.5 flex flex-wrap items-center gap-3 text-[12px]">
+              <Check2 ok={t.draft.validation.citations_ok}>Citations resolve</Check2>
+              <Check2 ok={t.draft.validation.numbers_ok}>Numbers grounded</Check2>
+              {t.draft.validation.retries > 0 && <span className="text-ink-3">{t.draft.validation.retries} {t.draft.validation.retries > 1 ? 'retries' : 'retry'}</span>}
+              <span className="ml-auto flex items-center gap-1">
+                <span className="mr-1 text-[11.5px] text-ink-3">Was this draft helpful?</span>
+                <FeedbackButton t={t} dispatch={dispatch} value="up" />
+                <FeedbackButton t={t} dispatch={dispatch} value="down" />
+              </span>
+              <button onClick={copyDraft} className="flex items-center gap-1 rounded border border-line px-2 py-1 hover:bg-slate-50"><Copy size={13} /> Copy</button>
+            </div>
+            {t.draft.validation.issues.length > 0 && (
+              <ul className="mt-2 list-disc pl-5 text-[12px] text-red-800">
+                {t.draft.validation.issues.map((i) => <li key={i}>{i}</li>)}
+              </ul>
+            )}
+          </Section>
+
+          <section className="rounded border border-line bg-white px-4 py-3">
+            <LatencyStrip latency={t.latency_ms} />
+          </section>
+        </div>
+
+        {/* Right */}
+        <aside className="space-y-3">
+          <SideCard title={<span className="flex items-center gap-1.5"><Sparkles size={14} className="text-brand-600" /> Similar tickets</span>}>
+            <p className="-mt-1 mb-2 text-[11px] text-ink-3">Top precedents from the knowledge base (similarity, cosine)</p>
+            <ul className="divide-y divide-line">
+              {t.precedents.map((p) => (
+                <li key={p.ticket_id} className="py-2 first:pt-0">
+                  <div className="text-[12px]">
+                    <span className="font-semibold text-brand-600">{p.ticket_id}</span> <span className="text-ink-2">· {p.subject}</span>
+                  </div>
+                  <div className="mt-1 flex items-center gap-2">
+                    <ConfidenceBar value={p.similarity} width="w-20" />
+                    <LangBadge code={p.language} />
+                    <span className="text-[11px] text-ink-3">{PRIORITIES[p.priority]?.label}</span>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </SideCard>
+          <SideCard title="Activity">
+            {activity.length === 0 ? (
+              <p className="text-[12px] text-ink-3">No activity yet.</p>
+            ) : (
+              <ul className="space-y-1.5">
+                {activity.map((h, i) => (
+                  <li key={i} className="text-[12px]">
+                    <div>{h.text}</div>
+                    <div className="text-[11px] text-ink-3">{timeAgo(h.at)}</div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </SideCard>
+        </aside>
+      </div>
+    </div>
+  );
+}
+
+function ToolButton({ icon: Icon, children, ...rest }) {
+  return (
+    <button {...rest} className="flex items-center gap-1.5 rounded border border-line bg-white px-2.5 py-1 text-[12px] hover:bg-slate-50 disabled:opacity-40">
+      <Icon size={13} /> {children}
+    </button>
+  );
+}
+
+function FeedbackButton({ t, dispatch, value }) {
+  const on = t.feedback === value;
+  const Icon = value === 'up' ? ThumbsUp : ThumbsDown;
+  return (
+    <button
+      onClick={() => dispatch({ type: 'FEEDBACK', id: t.ticket_id, value })}
+      aria-pressed={on}
+      aria-label={value === 'up' ? 'Draft helpful' : 'Draft not helpful'}
+      className={`rounded p-1.5 ${on ? (value === 'up' ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700') : 'text-ink-3 hover:bg-slate-100'}`}
+    ><Icon size={14} /></button>
+  );
+}
+
+function Check2({ ok, children }) {
+  return (
+    <span className={`flex items-center gap-1 ${ok ? 'text-emerald-700' : 'text-red-700'}`}>
+      {ok ? <CheckCircle2 size={14} /> : <XCircle size={14} />} {children}
+    </span>
+  );
+}
+
+// "Ticket Triage Suggestions" — pick which suggested fields to apply.
+function Suggestions({ t, review, toast }) {
+  const c = t.classification;
+  const fields = [
+    { id: 'queue', group: 'Routing', label: 'Queue', value: c.queue.label, conf: c.queue.confidence },
+    { id: 'decision', group: 'Routing', label: 'Gate', value: DECISIONS[t.gate.decision].label, conf: null },
+    { id: 'type', group: 'Ticket information', label: 'Type', value: c.type.label, conf: c.type.confidence },
+    { id: 'priority', group: 'Ticket information', label: 'Priority', value: PRIORITIES[c.priority.label]?.label, conf: c.priority.confidence },
+  ];
+  const [picked, setPicked] = useState(() => new Set(t.applied ?? fields.filter((f) => f.conf == null || f.conf >= GATE_THRESHOLDS.confidenceFloor).map((f) => f.id)));
+  const done = t.review === 'accepted' || t.review === 'rejected';
+
+  const apply = () => {
+    if (picked.size === 0) {
+      review(t.ticket_id, 'rejected');
+      toast('All suggestions rejected', 'info');
+    } else {
+      review(t.ticket_id, 'accepted', [...picked]);
+      toast(`Applied ${picked.size} suggestion${picked.size > 1 ? 's' : ''}`, 'good');
+    }
+  };
+  const flip = (id) => setPicked((s) => {
+    const n = new Set(s);
+    n.has(id) ? n.delete(id) : n.add(id);
+    return n;
+  });
+
+  return (
+    <Section title={`Ticket triage suggestions (${fields.length})`} icon={Sparkles}>
+      <p className="mb-2 text-[12px] text-ink-2">Select the fields to apply, then click Apply. Fields you leave unselected are rejected.</p>
+      {['Routing', 'Ticket information'].map((g) => (
+        <div key={g} className="mb-2">
+          <div className="mb-1 text-[12px] font-semibold">{g}</div>
+          <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
+            {fields.filter((f) => f.group === g).map((f) => (
+              <label key={f.id} className={`flex items-center gap-2 text-[12.5px] ${done ? 'opacity-70' : 'cursor-pointer'}`}>
+                <input type="checkbox" disabled={done} checked={picked.has(f.id)} onChange={() => flip(f.id)} className="accent-brand-600" />
+                <span>{f.label}: <b>{f.value}</b></span>
+                {f.conf != null && <span className={`text-[11px] ${f.conf < GATE_THRESHOLDS.confidenceFloor ? 'text-red-700' : 'text-ink-3'}`}>{pct(f.conf)}</span>}
+                {t.review === 'accepted' && t.applied?.includes(f.id) && <span className="text-[11px] text-emerald-700">Applied</span>}
+              </label>
+            ))}
+          </div>
+        </div>
+      ))}
+      <div className="mt-3 flex flex-wrap items-center gap-1.5">
+        {done ? (
+          <span className={`flex items-center gap-1.5 text-[12.5px] font-medium ${t.review === 'accepted' ? 'text-emerald-700' : 'text-ink-2'}`}>
+            {t.review === 'accepted' ? <CheckCircle2 size={15} /> : <XCircle size={15} />}
+            Suggestions {t.review}
+            <button onClick={() => review(t.ticket_id, 'pending')} className="ml-2 text-[12px] font-normal text-brand-600 hover:underline">Undo</button>
+          </span>
+        ) : (
+          <>
+            <button onClick={apply} className="flex items-center gap-1.5 rounded border border-line bg-white px-2.5 py-1 text-[12px] font-medium hover:bg-slate-50"><Check size={13} /> Apply</button>
+            <button onClick={() => setPicked(new Set(fields.map((f) => f.id)))} className="rounded border border-line px-2.5 py-1 text-[12px] hover:bg-slate-50">Select all</button>
+            <button onClick={() => setPicked(new Set())} className="rounded border border-line px-2.5 py-1 text-[12px] hover:bg-slate-50">Deselect all</button>
+          </>
+        )}
+      </div>
+    </Section>
+  );
+}

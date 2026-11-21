@@ -1,0 +1,44 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Segoe UI", system-ui, -apple-system, Roboto, sans-serif;
+
+  /* Brand: deep enterprise blue header, bright link blue */
+  --color-brand-900: #163a5c;
+  --color-brand-800: #1f4e79;
+  --color-brand-700: #2a6399;
+  --color-brand-600: #2f74b5;
+  --color-brand-100: #e3eef9;
+  --color-brand-50: #f2f7fc;
+
+  --color-page: #f4f6f9;
+  --color-line: #e3e6eb;
+  --color-ink: #1f2933;
+  --color-ink-2: #4b5563;
+  --color-ink-3: #8a94a3;
+
+  /* Chart tokens (dataviz reference palette, light surface) */
+  --color-series-1: #2a78d6;
+  --color-chart-grid: #e1e0d9;
+  --color-chart-axis: #c3c2b7;
+  --color-chart-muted: #898781;
+}
+
+html, body, #root { height: 100%; }
+body {
+  background: var(--color-page);
+  color: var(--color-ink);
+  font-size: 13px;
+  -webkit-font-smoothing: antialiased;
+}
+
+.tabular { font-variant-numeric: tabular-nums; }
+
+/* Thin scrollbars inside panels and kanban columns */
+.thin-scroll { scrollbar-width: thin; scrollbar-color: #c9cfd8 transparent; }
+
+@keyframes slide-in { from { transform: translateX(100%); } to { transform: translateX(0); } }
+.animate-slide-in { animation: slide-in 180ms ease-out; }
+
+@keyframes pulse-ring { 0% { box-shadow: 0 0 0 0 rgb(220 38 38 / .45); } 100% { box-shadow: 0 0 0 10px rgb(220 38 38 / 0); } }
+.animate-pulse-ring { animation: pulse-ring 1.6s ease-out infinite; }
