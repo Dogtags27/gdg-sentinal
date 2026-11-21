@@ -2,6 +2,8 @@
 
 Multilingual (English and German) incident triage, escalation and precedent-grounded reply drafting, built on the [`Tobi-Bueck/customer-support-tickets`](https://huggingface.co/datasets/Tobi-Bueck/customer-support-tickets) dataset.
 
+**Demo video:** [youtu.be/UBkSEnIPQRM](https://youtu.be/UBkSEnIPQRM) · **Live app:** [gdg-sentinal.vercel.app](https://gdg-sentinal.vercel.app/)
+
 For every incoming ticket (subject optional, body required) SentinelDesk:
 
 1. **Classifies and prioritises:** type, queue and priority, each with a calibrated confidence.
@@ -46,7 +48,7 @@ The recall-tuned rule is one setting away (`"gate_incident_rule": true` in `thre
 | Escalation and safety gate | [`engine/app/policy/gate.py`](engine/app/policy/gate.py): high-priority incident, low confidence, no precedent, unsupported request, plus security, outage, legal, prompt injection, language, ungrounded draft, degraded engine. Reason codes: [`contracts/reason_codes.md`](contracts/reason_codes.md) |
 | Retrieval of top-k precedents | Hierarchical search in Redis (queue routing, then KNN inside the routed queues, global fallback): [`engine/app/retrieval/search.py`](engine/app/retrieval/search.py) |
 | Grounded reply with citations, no invented policies | Prompt: [`engine/app/generate/prompt.py`](engine/app/generate/prompt.py). Validator (cited IDs must be retrieved, numbers must be in the evidence, language must match, one retry): [`engine/app/generate/validator.py`](engine/app/generate/validator.py) |
-| Live triage console | React console. Landing page with two roles: **ticket creators** submit and track their own tickets (`#/help`); **incident managers** get Overview, Board, ticket detail, Reports and **Live triage** (`#/lab`) for pasting any ticket: [`frontend/`](frontend/README.md) |
+| Live triage console | React console. Landing page with two roles: **ticket creators** submit tickets, open each one to follow its status, and get *Similar issues, already solved* (past answers, translated into their language by the engine when needed) (`#/help`); **incident managers** get Overview, Board, ticket detail, a **Funnel** with pivots, Reports and **Live triage** (`#/lab`) for pasting any ticket: [`frontend/`](frontend/README.md) |
 | Bonus: cross-lingual precedents | Multilingual embeddings; the prompt translates evidence into the reply language |
 | Bonus: outage burst detection | [`engine/app/policy/burst.py`](engine/app/policy/burst.py) and the major-incident banner |
 | Bonus: PII guardrail | The Go gateway masks emails, phones, IPs, IBANs, cards and account numbers before the engine or any LLM sees the text: [`backend/internal/pii`](backend/internal/pii) |
