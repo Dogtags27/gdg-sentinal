@@ -31,8 +31,10 @@ function reducer(state, a) {
       // Mock mode keeps its seeded demo tickets alongside the browser-local store.
       const keep = USE_MOCK ? state.tickets.filter((t) => !ids.has(t.ticket_id)) : [];
       const tickets = [...fromServer, ...keep].sort((x, y) => String(y.created_at).localeCompare(String(x.created_at)));
-      return { ...state, tickets, synced: true };
+      return { ...state, tickets, synced: true, syncError: null };
     }
+    case 'SYNC_ERROR':
+      return state.syncError === a.message ? state : { ...state, syncError: a.message };
     case 'ADD':
       return {
         ...state,
@@ -184,8 +186,9 @@ export function useServerSync(everyMs = 5000) {
       try {
         const items = await api.tickets();
         if (alive) dispatch({ type: 'SYNC', tickets: items });
-      } catch {
-        /* the health dot already shows when the gateway is down */
+      } catch (err) {
+        // Shown as a strip above the console, so an empty list is never mistaken for "no tickets".
+        if (alive) dispatch({ type: 'SYNC_ERROR', message: err?.message ?? String(err) });
       }
     };
     pull();

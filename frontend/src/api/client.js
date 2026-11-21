@@ -115,7 +115,15 @@ export const api = {
   /** Incident managers: recent tickets from every creator, newest first. */
   tickets: async (limit = 200) => {
     const items = USE_MOCK ? mockStore.read() : (await request(`/api/v1/tickets?limit=${limit}`, { timeout: 10_000 })).items;
-    return items.map((t) => normalizeTriage(t));
+    // One malformed record must not blank the whole console: skip it and say so in the console.
+    return (items ?? []).flatMap((t) => {
+      try {
+        return [normalizeTriage(t)];
+      } catch (err) {
+        console.warn(`Skipping stored ticket ${t?.ticket_id ?? '(no id)'}: ${err.message}`);
+        return [];
+      }
+    });
   },
 
   /** Ticket creators: the minimal status of one of their own tickets. */

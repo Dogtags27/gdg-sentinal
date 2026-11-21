@@ -15,6 +15,11 @@ const STATUS = {
   drafted: { label: 'Reply on its way', tone: 'bg-teal-50 text-teal-800', tip: 'An answer is being finalised for you.' },
   escalated: { label: 'Urgent: team engaged', tone: 'bg-rose-50 text-rose-800', tip: 'Flagged as urgent. Our on-call team is working on it now.' },
   resolved: { label: 'Resolved', tone: 'bg-emerald-50 text-emerald-800', tip: 'This ticket has been resolved.' },
+  missing: {
+    label: 'Not on record',
+    tone: 'bg-slate-100 text-slate-500',
+    tip: 'We no longer have this ticket: it expired after 7 days or was sent before tracking began. Please submit it again if you still need help.',
+  },
 };
 
 const readMine = () => {
@@ -64,8 +69,9 @@ export default function CreatorPortal() {
         try {
           const s = await api.ticketStatus(t.ticket_id);
           return { ...t, status: s.status };
-        } catch {
-          return t;
+        } catch (err) {
+          // 404: the store doesn't know this ticket, so don't keep showing a stale status. Other errors: keep the last one.
+          return err?.status === 404 ? { ...t, status: 'missing' } : t;
         }
       }),
     );

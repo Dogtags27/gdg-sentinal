@@ -12,7 +12,7 @@ import KanbanBoard from './pages/KanbanBoard.jsx';
 import TicketDetail from './pages/TicketDetail.jsx';
 import TriageLab from './pages/TriageLab.jsx';
 import { go, useHashRoute } from './lib/useHashRoute.js';
-import { useServerSync } from './state/tickets.jsx';
+import { useServerSync, useTickets } from './state/tickets.jsx';
 
 // Recharts is heavy; load the Insights tab only when it is opened.
 const InsightsPage = lazy(() => import('./pages/InsightsPage.jsx'));
@@ -42,6 +42,18 @@ export default function App() {
   return <ManagerConsole route={route} />;
 }
 
+// Shown only when the shared ticket store can't be read, so an empty console is never mistaken for "no tickets".
+function SyncNotice() {
+  const { syncError, synced } = useTickets();
+  if (!syncError) return null;
+  return (
+    <div role="status" className="bg-amber-50 px-4 py-1.5 text-[12.5px] text-amber-900 border-b border-amber-200">
+      <span className="font-semibold">Can't load tickets from the server.</span> {syncError}{' '}
+      {synced ? 'Showing the last list we loaded.' : ''} Retrying every 5 s.
+    </div>
+  );
+}
+
 // Incident manager: queues, board, reports and ticket detail. Resolvers don't create tickets here.
 function ManagerConsole({ route }) {
   const [query, setQuery] = useState('');
@@ -64,6 +76,7 @@ function ManagerConsole({ route }) {
   return (
     <div className="flex h-full flex-col">
       <TopBar route={route} query={query} setQuery={setQuery} />
+      <SyncNotice />
       <OutageBanner />
       <div className="flex min-h-0 flex-1">
         <SideRail route={route} onHistory={() => setShowHistory(true)} />
