@@ -1,6 +1,8 @@
 {
   "dataset_name": "Tobi-Bueck/customer-support-tickets (full EN/DE)",
   "source_file": "aa_dataset-tickets-multi-lang-5-2-50-version.csv",
+  "generated_at": "2026-11-21T17:13:10+00:00",
+  "verify_command": "python3 analytics/verify_operations_insights.py",
   "total_volume": 28587,
   "languages": {
     "counts": {
