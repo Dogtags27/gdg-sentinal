@@ -9,6 +9,7 @@ import ErrorBoundary from './components/ErrorBoundary.jsx';
 import TriageDashboard from './pages/TriageDashboard.jsx';
 import KanbanBoard from './pages/KanbanBoard.jsx';
 import TicketDetail from './pages/TicketDetail.jsx';
+import TriageLab from './pages/TriageLab.jsx';
 import { useHashRoute } from './lib/useHashRoute.js';
 
 // Recharts is heavy; load the Insights tab only when it is opened.
@@ -28,6 +29,7 @@ export default function App() {
         <InsightsPage />
       </Suspense>
     ),
+    lab: <TriageLab />,
     ticket: <TicketDetail id={route.id} />,
   }[route.page];
 

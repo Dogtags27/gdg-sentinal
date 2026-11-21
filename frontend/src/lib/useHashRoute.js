@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 
-// Tiny hash router: #/  #/view/escalated  #/board  #/insights  #/ticket/TKT-00042
+// Tiny hash router: #/  #/view/escalated  #/board  #/lab  #/insights  #/ticket/TKT-00042
 const decode = (s) => {
   try {
     return decodeURIComponent(s);
@@ -14,6 +14,7 @@ function parse() {
   if (parts[0] === 'ticket' && parts[1]) return { page: 'ticket', id: decode(parts[1]) };
   if (parts[0] === 'view' && parts[1]) return { page: 'dashboard', view: decode(parts[1]) };
   if (parts[0] === 'board') return { page: 'board' };
+  if (parts[0] === 'lab') return { page: 'lab' };
   if (parts[0] === 'insights') return { page: 'insights' };
   return { page: 'dashboard' };
 }

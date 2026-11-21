@@ -6,7 +6,7 @@ import { pct } from '../lib/format.js';
 
 export function Pill({ className = '', icon: Icon, children, title }) {
   return (
-    <span title={title} className={`inline-flex items-center gap-1 whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] font-medium leading-4 ${className}`}>
+    <span title={title} className={`inline-flex items-center gap-1 whitespace-nowrap rounded-full px-2.5 py-0.5 text-[12px] font-medium leading-4 ${className}`}>
       {Icon && <Icon size={12} strokeWidth={2.4} aria-hidden />}
       {children}
     </span>
@@ -46,7 +46,7 @@ const PRIORITY_STYLE = {
 export function PriorityBadge({ priority }) {
   const [cls, Icon] = PRIORITY_STYLE[priority] ?? PRIORITY_STYLE.low;
   return (
-    <span className={`inline-flex items-center gap-1 whitespace-nowrap text-[12px] leading-4 ${cls}`}>
+    <span className={`inline-flex items-center gap-1 whitespace-nowrap text-[13px] leading-4 ${cls}`}>
       <Icon size={13} strokeWidth={2.2} aria-hidden />
       {PRIORITIES[priority]?.label ?? priority}
     </span>
@@ -58,7 +58,7 @@ export function LangBadge({ code }) {
   return (
     <span
       title={LANGUAGES[code] ?? code}
-      className={`inline-flex h-5 min-w-7 items-center justify-center rounded border px-1 text-[10px] font-semibold uppercase tracking-wide ${
+      className={`inline-flex h-5.5 min-w-7 items-center justify-center rounded border px-1 text-[11px] font-semibold uppercase tracking-wide ${
         supported ? 'border-slate-300 bg-white text-ink-2' : 'border-amber-400 bg-amber-50 text-amber-800'
       }`}
     >
@@ -73,7 +73,7 @@ export function ReasonChip({ code, compact = false }) {
   return (
     <span
       title={r?.hint}
-      className={`inline-flex items-center gap-1 whitespace-nowrap rounded border px-1.5 py-px text-[10.5px] font-medium ${
+      className={`inline-flex items-center gap-1 whitespace-nowrap rounded border px-1.5 py-px text-[11.5px] font-medium ${
         p1 ? 'border-red-200 bg-red-50 text-red-800' : 'border-amber-200 bg-amber-50 text-amber-900'
       }`}
     >
@@ -88,10 +88,10 @@ export function ConfidenceBar({ value, width = 'w-16' }) {
   const tone = value >= 0.8 ? 'bg-emerald-500' : value >= 0.6 ? 'bg-amber-500' : 'bg-red-500';
   return (
     <span className="inline-flex items-center gap-1.5">
-      <span className={`h-1.5 ${width} overflow-hidden rounded-full bg-slate-200`}>
+      <span className={`h-2 ${width} overflow-hidden rounded-full bg-slate-200`}>
         <span className={`block h-full rounded-full ${tone}`} style={{ width: `${Math.round(value * 100)}%` }} />
       </span>
-      <span className="tabular text-[11px] text-ink-2">{pct(value)}</span>
+      <span className="tabular text-[12px] text-ink-2">{pct(value)}</span>
     </span>
   );
 }
