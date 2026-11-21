@@ -1,17 +1,12 @@
-/**
- * Page hero — mirrors app.sentineldesk.io / marketing hierarchy (eyebrow → title → lede).
- * Reference: https://www.sentineldeskhq.com/
- */
-
-export default function PageHeader({ eyebrow, title, description, actions }) {
+// Page title row: title, one plain sentence about the page, and optional actions on the right.
+export default function PageHeader({ title, description, actions }) {
   return (
-    <header className="sentinel-page-header">
-      {eyebrow && <p className="text-[11.5px] font-semibold uppercase tracking-wide text-brand-700">{eyebrow}</p>}
-      <div className="mt-1 flex flex-wrap items-center gap-3">
-        <h1 className="text-[22px] font-semibold tracking-tight text-ink md:text-[24px]">{title}</h1>
-        {actions && <div className="ml-auto flex flex-wrap gap-2">{actions}</div>}
+    <header className="flex flex-wrap items-end gap-x-4 gap-y-2">
+      <div className="min-w-0">
+        <h1 className="text-[22px] font-semibold tracking-tight text-ink">{title}</h1>
+        {description && <p className="mt-0.5 max-w-3xl text-[13px] leading-relaxed text-ink-2">{description}</p>}
       </div>
-      {description && <p className="mt-1.5 max-w-3xl text-[13px] leading-relaxed text-ink-2">{description}</p>}
+      {actions && <div className="ml-auto flex flex-wrap items-center gap-2">{actions}</div>}
     </header>
   );
 }

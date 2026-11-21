@@ -29,6 +29,13 @@ export const SAMPLES = [
     body: 'Auf unserem Fileserver sind seit heute Nacht alle Dateien verschlüsselt und es liegt eine Lösegeldforderung vor. Wir vermuten einen Angriff.',
   },
   {
+    id: 'en-pii',
+    label: 'EN · Charged twice, full of personal data',
+    hint: 'Gateway masks email, phone, IBAN and card',
+    subject: 'Charged twice this month',
+    body: 'Hello, my card 4111 1111 1111 1111 was charged twice for the March invoice. Please refund one payment to my account DE89 3704 0044 0532 0130 00. You can reach me at max.mustermann@example.com or +49 30 9876 5432.',
+  },
+  {
     id: 'en-gdpr',
     label: 'EN · GDPR deletion',
     hint: 'Legal / compliance (P2)',

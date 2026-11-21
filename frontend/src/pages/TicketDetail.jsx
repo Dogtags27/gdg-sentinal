@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import { ConfidenceBar, DecisionBadge, LangBadge, Pill, PriorityBadge, StatusBadge } from '../components/Badges.jsx';
 import DraftText from '../components/DraftText.jsx';
+import PrecedentDrawer from '../components/PrecedentDrawer.jsx';
 import LatencyStrip from '../components/LatencyStrip.jsx';
 import { useTickets } from '../state/tickets.jsx';
 import { DECISIONS, GATE_THRESHOLDS, LANGUAGES, PRIORITIES, REASONS } from '../lib/constants.js';
@@ -17,10 +18,10 @@ const DRAFT_MODE = {
   holding: { label: 'Holding reply', tone: 'bg-slate-200 text-ink-2' },
 };
 
-function Section({ title, icon: Icon, right, children, defaultOpen = true }) {
+function Section({ id, title, icon: Icon, right, children, defaultOpen = true }) {
   const [open, setOpen] = useState(defaultOpen);
   return (
-    <section className="rounded border border-line bg-white">
+    <section id={id} className="scroll-mt-4 rounded border border-line bg-white">
       <header className="flex items-center gap-2 px-4 py-2.5">
         <button onClick={() => setOpen((o) => !o)} className="flex items-center gap-2 text-[14px] font-semibold text-ink" aria-expanded={open}>
           {open ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
@@ -55,6 +56,19 @@ function KV({ k, children }) {
 export default function TicketDetail({ id }) {
   const { tickets, byId, dispatch, move, review, toast, history } = useTickets();
   const t = byId(id);
+  const [openSimilar, setOpenSimilar] = useState(null); // index into t.precedents
+  const [highlight, setHighlight] = useState(null); // precedent id to flash in the draft
+
+  useEffect(() => {
+    setOpenSimilar(null);
+    setHighlight(null);
+  }, [id]);
+
+  useEffect(() => {
+    if (!highlight) return undefined;
+    const timer = setTimeout(() => setHighlight(null), 3000);
+    return () => clearTimeout(timer);
+  }, [highlight]);
 
   const ordered = useMemo(() => [...tickets].sort((a, b) => b.created_at.localeCompare(a.created_at)), [tickets]);
   const idx = ordered.findIndex((x) => x.ticket_id === id);
@@ -91,6 +105,16 @@ export default function TicketDetail({ id }) {
       toast('Clipboard is blocked in this browser', 'critical');
     }
   };
+  const openCited = (pid) => {
+    const i = t.precedents.findIndex((p) => p.ticket_id === pid);
+    if (i !== -1) setOpenSimilar(i);
+  };
+  const showInDraft = (pid) => {
+    setOpenSimilar(null);
+    setHighlight(pid);
+    const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    requestAnimationFrame(() => document.getElementById('reply-draft')?.scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'center' }));
+  };
   const act = (status, msg, tone = 'info') => {
     move(t.ticket_id, status);
     toast(msg, tone);
@@ -99,15 +123,16 @@ export default function TicketDetail({ id }) {
   return (
     <div className="flex min-h-full flex-col">
       {/* Title bar */}
-      <div className="flex items-center gap-3 bg-brand-700 px-4 py-2 text-white">
-        <a href="#/" className="rounded p-1 hover:bg-white/10" title="Back to dashboard"><ArrowLeft size={16} /></a>
-        <h1 className="min-w-0 truncate text-[15px]">
-          Ticket <span className="text-white/60">·</span> {t.ticket_id} <span className="text-white/60">·</span> {ticketTitle(t)}
+      <div className="flex items-center gap-3 border-b border-line bg-white px-4 py-2.5">
+        <a href="#/" className="flex shrink-0 items-center gap-1 rounded px-1 py-0.5 text-[12.5px] text-ink-3 hover:text-ink" title="Back to Overview"><ArrowLeft size={15} /> <span className="hidden sm:inline">Overview</span></a>
+        <h1 className="flex min-w-0 items-baseline gap-2 text-[15px] font-semibold text-ink">
+          <span className="shrink-0 font-mono text-[13px] font-medium text-brand-600">{t.ticket_id}</span>
+          <span className="truncate">{ticketTitle(t)}</span>
         </h1>
-        <div className="ml-auto flex shrink-0 items-center gap-1 text-[12.5px]">
-          <button disabled={idx <= 0} onClick={() => go(ticketHref(ordered[idx - 1].ticket_id))} className="rounded p-1 hover:bg-white/10 disabled:opacity-30" aria-label="Previous ticket"><ChevronLeft size={16} /></button>
+        <div className="ml-auto flex shrink-0 items-center gap-1 text-[12.5px] text-ink-2">
+          <button disabled={idx <= 0} onClick={() => go(ticketHref(ordered[idx - 1].ticket_id))} className="rounded p-1 hover:bg-slate-100 disabled:opacity-30" aria-label="Previous ticket"><ChevronLeft size={16} /></button>
           <span className="tabular">{idx + 1} of {ordered.length}</span>
-          <button disabled={idx >= ordered.length - 1} onClick={() => go(ticketHref(ordered[idx + 1].ticket_id))} className="rounded p-1 hover:bg-white/10 disabled:opacity-30" aria-label="Next ticket"><ChevronRight size={16} /></button>
+          <button disabled={idx >= ordered.length - 1} onClick={() => go(ticketHref(ordered[idx + 1].ticket_id))} className="rounded p-1 hover:bg-slate-100 disabled:opacity-30" aria-label="Next ticket"><ChevronRight size={16} /></button>
         </div>
       </div>
 
@@ -202,6 +227,7 @@ export default function TicketDetail({ id }) {
           </Section>
 
           <Section
+            id="reply-draft"
             title="Reply draft"
             icon={Sparkles}
             right={
@@ -228,7 +254,7 @@ export default function TicketDetail({ id }) {
               </div>
             )}
             <div className="rounded border border-line bg-slate-50/70 px-4 py-3">
-              <DraftText text={t.draft.text} known={t.precedents.map((p) => p.ticket_id)} />
+              <DraftText text={t.draft.text} known={t.precedents.map((p) => p.ticket_id)} onCite={openCited} highlight={highlight} />
             </div>
             <div className="mt-2.5 flex flex-wrap items-center gap-3 text-[12px]">
               <Check2 ok={t.draft.validation.citations_ok}>Citations resolve</Check2>
@@ -266,33 +292,58 @@ export default function TicketDetail({ id }) {
 
         {/* Right */}
         <aside className="space-y-3">
-          <SideCard title={<span className="flex items-center gap-1.5"><Sparkles size={14} className="text-brand-600" /> Similar tickets</span>}>
-            <p className="-mt-1 mb-2 text-[11px] text-ink-3">Top precedents from the knowledge base (similarity, cosine)</p>
-            <RoutingPath route={t.retrieval.route} found={t.precedents.length} />
-            {t.precedents.length === 0 && (
+          <SideCard
+            title={
+              <span className="flex items-baseline justify-between gap-2">
+                Similar tickets
+                {t.precedents.length > 0 && <span className="text-[11.5px] font-normal text-ink-3">{t.precedents.length} found</span>}
+              </span>
+            }
+          >
+            {t.precedents.length === 0 ? (
               <p className="rounded border border-dashed border-line px-3 py-4 text-center text-[12px] text-ink-3">
                 No similar ticket in the knowledge base. The draft is a holding reply that promises nothing.
               </p>
+            ) : (
+              <>
+                <ul className="-mx-1.5 space-y-0.5">
+                  {t.precedents.map((p, i) => {
+                    const cite = t.draft.citations.indexOf(p.ticket_id);
+                    const on = openSimilar === i;
+                    return (
+                      <li key={p.ticket_id}>
+                        <button
+                          type="button"
+                          onClick={() => setOpenSimilar(i)}
+                          aria-haspopup="dialog"
+                          className={`group grid w-full grid-cols-[1fr_auto] items-center gap-x-2 rounded-md border px-2 py-2 text-left transition outline-none focus-visible:ring-2 focus-visible:ring-brand-600/40 ${
+                            on ? 'border-brand-600/40 bg-brand-50' : 'border-transparent hover:border-brand-100 hover:bg-slate-50'
+                          }`}
+                        >
+                          <span className="min-w-0">
+                            <span className="flex items-center gap-1.5 text-[11.5px]">
+                              <span className="font-mono font-medium text-brand-600">{p.ticket_id}</span>
+                              {cite !== -1 && <span className="font-medium text-teal-700">cited [c{cite}]</span>}
+                            </span>
+                            <span className="mt-0.5 block text-[12.5px] leading-snug font-medium text-ink">{p.subject}</span>
+                            <span className="mt-1 flex items-center gap-2">
+                              <ConfidenceBar value={p.similarity} width="w-12" />
+                              <LangBadge code={p.language} />
+                            </span>
+                          </span>
+                          <ChevronRight size={15} className="text-slate-400 transition group-hover:text-brand-600" aria-hidden />
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+                <p className="mt-2 text-[11.5px] text-ink-3">Open one to see how it was resolved.</p>
+              </>
             )}
-            <ul className="divide-y divide-line">
-              {t.precedents.map((p) => (
-                <li key={p.ticket_id} className="py-2 first:pt-0">
-                  <div className="text-[12px]">
-                    <span className="font-semibold text-brand-600">{p.ticket_id}</span> <span className="text-ink-2">· {p.subject}</span>
-                  </div>
-                  <div className="mt-1 flex items-center gap-2">
-                    <ConfidenceBar value={p.similarity} width="w-20" />
-                    <LangBadge code={p.language} />
-                    <span className="text-[11px] text-ink-3">{PRIORITIES[p.priority]?.label}</span>
-                  </div>
-                  {p.answer_snippet && (
-                    <p className="mt-1 line-clamp-3 border-l-2 border-line pl-2 text-[11.5px] leading-snug text-ink-2" title={p.answer_snippet}>
-                      {p.answer_snippet}
-                    </p>
-                  )}
-                </li>
-              ))}
-            </ul>
+            <details className="mt-3 border-t border-line pt-2 text-[12px]">
+              <summary className="cursor-pointer text-ink-2 hover:text-ink">Where these came from</summary>
+              <div className="mt-2"><RoutingPath route={t.retrieval.route} found={t.precedents.length} /></div>
+            </details>
           </SideCard>
           <SideCard title="Activity">
             {activity.length === 0 ? (
@@ -310,6 +361,17 @@ export default function TicketDetail({ id }) {
           </SideCard>
         </aside>
       </div>
+      {openSimilar != null && t.precedents[openSimilar] && (
+        <PrecedentDrawer
+          ticket={t}
+          precedents={t.precedents}
+          index={openSimilar}
+          setIndex={setOpenSimilar}
+          onClose={() => setOpenSimilar(null)}
+          onHighlight={showInDraft}
+          toast={toast}
+        />
+      )}
     </div>
   );
 }

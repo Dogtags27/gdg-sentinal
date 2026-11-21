@@ -17,6 +17,7 @@ test('demo samples land on their scripted gate decision', () => {
     'de-ransomware': ['ESCALATE_ONCALL', 'SECURITY_INCIDENT'],
     'en-gdpr': ['HUMAN_REVIEW', 'LEGAL_OR_COMPLIANCE'],
     'fr-login': ['HUMAN_REVIEW', 'UNSUPPORTED_LANGUAGE'],
+    'en-pii': ['HUMAN_REVIEW', 'UNSUPPORTED_REQUEST'],
   };
   for (const s of SAMPLES) {
     const [decision, ...reasons] = want[s.id];
@@ -24,6 +25,10 @@ test('demo samples land on their scripted gate decision', () => {
     assert.equal(r.gate.decision, decision, s.id);
     for (const c of reasons) assert.ok(codes(r).includes(c), `${s.id} should fire ${c}, got ${codes(r)}`);
   }
+  // The Live triage "personal data" scenario must show every kind of masking it promises.
+  const pii = SAMPLES.find((s) => s.id === 'en-pii');
+  const masked = analyze({ ticket_id: 'T', subject: pii.subject, body: pii.body }).pii.masked.map((m) => m.type).sort();
+  assert.deepEqual(masked, ['CARD', 'EMAIL', 'IBAN', 'PHONE']);
 });
 
 test('gate rule: any P1 escalates, else any reason holds, else auto-draft', () => {
