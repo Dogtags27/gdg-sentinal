@@ -208,4 +208,3 @@ export const InsightsTab = () => {
 };
 
 export default InsightsTab;
-EOF

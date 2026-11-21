@@ -17,24 +17,53 @@ FRONTEND_INSIGHTS_DIR = os.path.join(BASE_DIR, "frontend", "src", "features", "i
 os.makedirs(INSIGHTS_DIR, exist_ok=True)
 os.makedirs(FRONTEND_INSIGHTS_DIR, exist_ok=True)
 
-def run_eda_and_export():
-    csv_candidates = [
-        os.path.join(LOCAL_DATA_DIR, "dataset-tickets-multi-lang-4-20k.csv"),
-        os.path.join(LOCAL_DATA_DIR, "kb_train.csv"),
-    ]
-    
-    data_path = None
-    for p in csv_candidates:
-        if os.path.exists(p):
-            data_path = p
-            break
+FULL_CSV = "aa_dataset-tickets-multi-lang-5-2-50-version.csv"
+SUBSET_CSV = "dataset-tickets-multi-lang-4-20k.csv"
+HF_DATASET = "Tobi-Bueck/customer-support-tickets"
 
-    if not data_path:
-        raise FileNotFoundError(f"Could not locate dataset in {LOCAL_DATA_DIR}")
+
+def normalize_priority(series: pd.Series) -> pd.Series:
+    """Map 1/2/3 or text variants to high | medium | low (hackathon brief)."""
+    mapping = {
+        "1": "low",
+        "2": "medium",
+        "3": "high",
+        "low": "low",
+        "medium": "medium",
+        "high": "high",
+        "critical": "high",
+    }
+    return (
+        series.astype(str)
+        .str.strip()
+        .str.lower()
+        .map(lambda v: mapping.get(v, v))
+    )
+
+
+def resolve_dataset_path() -> tuple[str, str]:
+    """Prefer full HF CSV, then 20k subset, then kb_train split."""
+    csv_candidates = [
+        (os.path.join(LOCAL_DATA_DIR, FULL_CSV), f"{HF_DATASET} (full EN/DE)"),
+        (os.path.join(LOCAL_DATA_DIR, SUBSET_CSV), f"{HF_DATASET} (20k subset)"),
+        (os.path.join(LOCAL_DATA_DIR, "kb_train.csv"), f"{HF_DATASET} (kb_train split)"),
+    ]
+    for path, label in csv_candidates:
+        if os.path.isfile(path) and os.path.getsize(path) > 0:
+            return path, label
+    tried = "\n".join(f"  - {p}" for p, _ in csv_candidates)
+    raise FileNotFoundError(f"Could not locate dataset in {LOCAL_DATA_DIR}. Tried:\n{tried}")
+
+
+def run_eda_and_export():
+    data_path, dataset_label = resolve_dataset_path()
 
     print(f"Loading dataset from: {data_path}")
     df = pd.read_csv(data_path)
     print(f"Total rows: {len(df):,}")
+
+    if "priority" in df.columns:
+        df["priority"] = normalize_priority(df["priority"])
 
     df["subject"] = df["subject"].fillna("")
     df["body"] = df["body"].fillna("")
@@ -46,8 +75,13 @@ def run_eda_and_export():
         df["answer_len"] = 0
 
     # 1. Operational Insights (DA-02)
-    lang_counts = df["language"].value_counts().to_dict()
+    # Insights UI expects en + de keys (InsightsTab.jsx KPI strip).
+    lang_counts = {k: int(v) for k, v in df["language"].value_counts().to_dict().items()}
+    for code in ("en", "de"):
+        lang_counts.setdefault(code, 0)
     lang_pcts = (df["language"].value_counts(normalize=True) * 100).round(1).to_dict()
+    for code in ("en", "de"):
+        lang_pcts.setdefault(code, 0.0)
 
     queue_counts = df["queue"].value_counts().to_dict()
     priority_counts = df["priority"].value_counts().to_dict()
@@ -58,7 +92,8 @@ def run_eda_and_export():
     outages_by_queue = outages["queue"].value_counts().to_dict()
 
     operations_insights = {
-        "dataset_name": "Tobi-Bueck/customer-support-tickets (20k subset)",
+        "dataset_name": dataset_label,
+        "source_file": os.path.basename(data_path),
         "total_volume": len(df),
         "languages": {
             "counts": lang_counts,
