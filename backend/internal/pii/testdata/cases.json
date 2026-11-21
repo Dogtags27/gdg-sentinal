@@ -1,0 +1,23 @@
+[
+  { "name": "email", "in": "mail anna.keller@example.com now", "out": "mail [EMAIL] now", "masked": [{ "type": "EMAIL", "count": 1 }] },
+  { "name": "two emails", "in": "a.b@x.de and c+d@mail.example.org", "out": "[EMAIL] and [EMAIL]", "masked": [{ "type": "EMAIL", "count": 2 }] },
+  { "name": "IBAN compact", "in": "IBAN DE89370400440532013000 bitte", "out": "IBAN [IBAN] bitte", "masked": [{ "type": "IBAN", "count": 1 }] },
+  { "name": "IBAN spaced", "in": "IBAN DE89 3704 0044 0532 0130 00.", "out": "IBAN [IBAN].", "masked": [{ "type": "IBAN", "count": 1 }] },
+  { "name": "IBAN GB", "in": "pay GB29 NWBK 6016 1331 9268 19 today", "out": "pay [IBAN] today", "masked": [{ "type": "IBAN", "count": 1 }] },
+  { "name": "card spaced", "in": "card 4111 1111 1111 1111 expired", "out": "card [CARD] expired", "masked": [{ "type": "CARD", "count": 1 }] },
+  { "name": "card dashed", "in": "card 5500-0000-0000-0004", "out": "card [CARD]", "masked": [{ "type": "CARD", "count": 1 }] },
+  { "name": "phone international", "in": "call +49 30 1234 5678 today", "out": "call [PHONE] today", "masked": [{ "type": "PHONE", "count": 1 }] },
+  { "name": "phone national", "in": "Rückruf an 030 1234567.", "out": "Rückruf an [PHONE].", "masked": [{ "type": "PHONE", "count": 1 }] },
+  { "name": "phone with slash", "in": "Tel. 089/1234567", "out": "Tel. [PHONE]", "masked": [{ "type": "PHONE", "count": 1 }] },
+  { "name": "two phones", "in": "030 1234567 or 040 7654321", "out": "[PHONE] or [PHONE]", "masked": [{ "type": "PHONE", "count": 2 }] },
+  { "name": "mixed", "in": "Mail max@firma.de, Tel +49 30 1234 5678, IBAN DE89370400440532013000", "out": "Mail [EMAIL], Tel [PHONE], IBAN [IBAN]", "masked": [{ "type": "EMAIL", "count": 1 }, { "type": "IBAN", "count": 1 }, { "type": "PHONE", "count": 1 }] },
+  { "name": "order number kept", "in": "order 123456789 shipped", "out": "order 123456789 shipped", "masked": [] },
+  { "name": "hex error code kept", "in": "error 0x80070005 on update", "out": "error 0x80070005 on update", "masked": [] },
+  { "name": "ticket id kept", "in": "see ticket TKT-24017", "out": "see ticket TKT-24017", "masked": [] },
+  { "name": "version kept", "in": "version 2.14.3 crashes", "out": "version 2.14.3 crashes", "masked": [] },
+  { "name": "grouped card masked even without checksum", "in": "ref 1234 5678 9012 3456", "out": "ref [CARD]", "masked": [{ "type": "CARD", "count": 1 }] },
+  { "name": "card bare valid", "in": "card 4111111111111111", "out": "card [CARD]", "masked": [{ "type": "CARD", "count": 1 }] },
+  { "name": "long bare order number kept", "in": "order 1234567890123 shipped", "out": "order 1234567890123 shipped", "masked": [] },
+  { "name": "time and date kept", "in": "seit 07:40 Uhr am 21.11.2026", "out": "seit 07:40 Uhr am 21.11.2026", "masked": [] },
+  { "name": "empty", "in": "", "out": "", "masked": [] }
+]
