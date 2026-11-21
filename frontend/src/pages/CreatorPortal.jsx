@@ -227,7 +227,7 @@ export default function CreatorPortal({ ticketId }) {
     <div className="thin-scroll h-full overflow-y-auto bg-page">
       {/* Hero */}
       <div className={`help-hero text-white ${ticketId ? 'pb-24' : 'pb-28 sm:pb-32'}`}>
-        <header className="mx-auto flex h-16 max-w-5xl items-center gap-2.5 px-4 sm:px-6">
+        <header className="mx-auto flex h-16 max-w-6xl items-center gap-2.5 px-4 sm:px-6">
           <a href="#/" className="flex items-center gap-2.5 rounded-md outline-none focus-visible:ring-2 focus-visible:ring-teal-300">
             <span className="grid h-8 w-8 place-items-center rounded-lg bg-teal-500 text-brand-950">
               <ShieldCheck size={19} strokeWidth={2.4} aria-hidden />

@@ -85,7 +85,7 @@ export default function RelatedReading({ ticketId, className = '' }) {
 
   // A side panel next to the ticket (stacks below it on phones). The first answer starts open.
   return (
-    <section aria-labelledby={`related-${ticketId}`} className={className}>
+    <section aria-labelledby={`related-${ticketId}`} className={`help-card rounded-2xl p-5 sm:p-6 ${className}`}>
       <h2 id={`related-${ticketId}`} className="flex items-center gap-2 text-[15px] font-semibold text-ink">
         <BookOpen size={16} className="text-teal-700" aria-hidden /> Similar issues, already solved
       </h2>
