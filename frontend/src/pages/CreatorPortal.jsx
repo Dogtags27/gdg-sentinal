@@ -296,7 +296,7 @@ export default function CreatorPortal({ ticketId }) {
         ) : (
           <>
             {/* Form, or the success card with readings that may solve it on the right */}
-            <div className={done ? 'grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_400px]' : ''}>
+            <div className={done ? 'grid grid-cols-1 items-start gap-6 lg:grid-cols-[minmax(0,1fr)_400px]' : ''}>
               <section className="help-card help-rise rounded-2xl p-5 sm:p-8" style={{ animationDelay: '220ms' }}>
                 {done ? (
                   <div className="lab-in py-6 text-center">

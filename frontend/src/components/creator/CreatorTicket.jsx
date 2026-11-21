@@ -108,7 +108,7 @@ export default function CreatorTicket({ id }) {
   const resolved = view.status === 'resolved';
   return (
     // Open ticket: the ticket on the left, readings that may solve it on the right (stacked on phones).
-    <div className={resolved ? 'mx-auto max-w-3xl' : 'grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_400px]'}>
+    <div className={resolved ? 'mx-auto max-w-3xl' : 'grid grid-cols-1 items-start gap-6 lg:grid-cols-[minmax(0,1fr)_400px]'}>
       <section className="help-card rounded-2xl p-6 sm:p-8">
         <div className="flex flex-wrap items-center gap-3">
           <span className="font-mono text-[12.5px] text-ink-3">{view.ticket_id}</span>
