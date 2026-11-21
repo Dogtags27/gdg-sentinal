@@ -12,14 +12,15 @@ SECURITY_KEYWORDS_EN = [
     r"\bransomware\b", r"\bdata\s+breach\b", r"\bsecurity\s+breach\b",
     r"\bhacked\b", r"\bmalware\b", r"\bddos\b", r"\bcredential\s+leak\b",
     r"\bunauthorized\s+access\b", r"\bcompromised\s+account\b", r"\bphishing\s+attack\b",
-    r"\bkeylogger\b", r"\bbackdoor\b", r"\bzero-day\b"
+    r"\bkeylogger\b", r"\bbackdoor\b", r"\bzero-day\b",
+    r"\bransom\s+(note|demand|message)s?\b",
 ]
 
 SECURITY_KEYWORDS_DE = [
     r"\bransomware\b", r"\bdatenpanne\b", r"\bsicherheitsvorfall\b",
     r"\berpressungstrojaner\b", r"\bgehackt\b", r"\bschadsoftware\b",
     r"\bunbefugter\s+zugriff\b", r"\bkompromittiert\b", r"\bpasswort-diebstahl\b",
-    r"\bangriff\b", r"\bspionage\b"
+    r"\bangriff\b", r"\bspionage\b", r"\blösegeld(forderung)?\b",
 ]
 
 # 2. Prompt Injections & Jailbreak Attempts (P2)
