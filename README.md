@@ -219,18 +219,18 @@ Rules:
 - [ ] ML-18 README: metrics and method · 4:00–4:30
 
 ### QA
-- [ ] QA-01 Bug tracker, labels and the shared test sheet · 0:00–0:25
-- [ ] QA-02 Golden test set: 30 unseen tickets with expected outcomes (**critical**) · 0:25–1:30
-- [ ] QA-03 Test plan · 0:25–1:30
-- [ ] QA-04 Review the contract from the operator’s side · 0:25–1:30
-- [ ] QA-05 Test the deployed mock UI · 1:30–3:00
-- [ ] QA-06 Hallucination audit rubric · 1:30–3:00
-- [ ] QA-07 Run the golden set on the real pipeline (**critical**) · 3:00–4:00
-- [ ] QA-08 Score 15 drafts with the hallucination rubric · 3:00–4:00
-- [ ] QA-09 Leakage audit sign-off · 3:00–4:00
-- [ ] QA-10 Demo script draft · 3:00–4:00
-- [ ] QA-11 Final regression and backup video (**critical**) · 4:00–4:30
-- [ ] QA-12 Judge Q&A sheet · 4:00–4:30
+- [x] QA-01 Bug tracker, labels and the shared test sheet · 0:00–0:25
+- [x] QA-02 Golden test set: 30 unseen tickets with expected outcomes (**critical**) · 0:25–1:30
+- [x] QA-03 Test plan · 0:25–1:30
+- [x] QA-04 Review the contract from the operator’s side · 0:25–1:30
+- [x] QA-05 Test the deployed mock UI · 1:30–3:00
+- [x] QA-06 Hallucination audit rubric · 1:30–3:00
+- [x] QA-07 Run the golden set on the real pipeline (**critical**) · 3:00–4:00
+- [x] QA-08 Score 15 drafts with the hallucination rubric · 3:00–4:00
+- [x] QA-09 Leakage audit sign-off · 3:00–4:00
+- [x] QA-10 Demo script draft · 3:00–4:00
+- [x] QA-11 Final regression and backup video (**critical**) · 4:00–4:30
+- [x] QA-12 Judge Q&A sheet · 4:00–4:30
 
 ### Stretch (only if ahead)
 - [ ] SX-01 Stream results with server-sent events (Hriday)
