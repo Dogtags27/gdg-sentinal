@@ -1,4 +1,4 @@
-// FS-04 — the only module that talks to the network.
+// FS-06 — the only module that talks to the network.
 // Every call has a timeout and throws ApiError with a message an operator can read.
 import { mockApi } from './mockEngine.js';
 import { ApiError, normalizeTriage, serverMessage } from './normalize.js';
@@ -6,7 +6,7 @@ import { ApiError, normalizeTriage, serverMessage } from './normalize.js';
 export { ApiError };
 
 const BASE = (import.meta.env.VITE_API_BASE || '').replace(/\/$/, '');
-// Production builds always go through the gateway; its MOCK_ENGINE switch (H-06) covers demo mode there.
+// Production builds always go through the gateway; its MOCK_ENGINE switch (FS-03) covers demo mode there.
 const MOCK_FLAG = import.meta.env.VITE_USE_MOCK;
 export const USE_MOCK = import.meta.env.DEV ? MOCK_FLAG !== 'false' : MOCK_FLAG === 'true';
 

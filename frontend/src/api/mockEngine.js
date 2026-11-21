@@ -315,8 +315,27 @@ export function analyze(input, ctx = {}) {
     draft,
     latency_ms: latency,
     pii: { masked: masker.entities() },
+    routing: route(p.queue, classification.queue.confidence, top, precedents[0].similarity),
     burst: ctx.burst && category === 'outage' ? { cluster_id: 'BURST-VPN-01' } : null,
   };
+}
+
+// Level 1 of the hierarchical retrieval (root README): score = 0.6 × classifier + 0.4 × centroid cosine,
+// keep only the top queue when it scores at least 0.80, else the top two. Mirrors the Go mock.
+const RUNNER_UP = {
+  'Service Outages and Maintenance': 'IT Support',
+  'IT Support': 'Technical Support',
+  'Billing and Payments': 'Customer Service',
+  'Customer Service': 'General Inquiry',
+  'Product Support': 'Technical Support',
+  'Technical Support': 'Product Support',
+  'General Inquiry': 'Customer Service',
+};
+function route(queue, queueConf, top, top1) {
+  const score = round2(0.6 * queueConf + 0.4 * top);
+  const queues = [{ queue, score }];
+  if (score < 0.8 && RUNNER_UP[queue]) queues.push({ queue: RUNNER_UP[queue], score: round2(score * 0.7) });
+  return { queues, fallback_global: top1 < SIM_THRESHOLD };
 }
 
 // ---------- fake transport ----------

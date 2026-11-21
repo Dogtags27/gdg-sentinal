@@ -53,6 +53,13 @@ export function normalizeTriage(r, input = {}) {
       priority: { ...priority, label: priority.label.toLowerCase(), p_high: num(obj(cls.priority).p_high) },
     },
     precedents: (Array.isArray(r.precedents) ? r.precedents : []).filter((p) => p && p.ticket_id),
+    // Hierarchical retrieval path; optional, the panel hides it when the engine doesn't send it.
+    routing: {
+      queues: (Array.isArray(obj(r.routing).queues) ? r.routing.queues : [])
+        .filter((q) => q && q.queue)
+        .map((q) => ({ queue: String(q.queue), score: num(q.score, null) })),
+      fallback_global: obj(r.routing).fallback_global === true,
+    },
     gate: {
       decision: gate.decision,
       reasons: (Array.isArray(gate.reasons) ? gate.reasons : [])

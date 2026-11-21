@@ -7,7 +7,7 @@ import { go, ticketHref } from '../lib/useHashRoute.js';
 
 const MAX_BODY = 8000;
 
-// FS-03 — ticket input with a sample menu.
+// FS-05 — ticket input with a sample menu.
 export default function NewTicketModal({ onClose }) {
   const { triage } = useTickets();
   const [subject, setSubject] = useState('');

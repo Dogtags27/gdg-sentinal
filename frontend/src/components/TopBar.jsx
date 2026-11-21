@@ -10,7 +10,7 @@ const NAV = [
   { page: 'insights', href: '#/insights', label: 'Insights' },
 ];
 
-// FS-02 — polls the gateway health endpoint.
+// FS-04 — polls the gateway health endpoint.
 function useHealth() {
   const [h, setH] = useState({ state: 'checking' });
   useEffect(() => {
@@ -36,7 +36,13 @@ function useHealth() {
 function HealthDot() {
   const h = useHealth();
   const tone = { checking: 'bg-slate-300', ok: 'bg-emerald-400', degraded: 'bg-amber-400', down: 'bg-red-500' }[h.state];
-  const label = { checking: 'Checking…', ok: USE_MOCK ? 'Mock engine' : 'Gateway up', degraded: 'Degraded', down: 'Gateway down' }[h.state];
+  const gatewayMock = h.detail?.mode === 'mock';
+  const label = {
+    checking: 'Checking…',
+    ok: USE_MOCK ? 'Mock engine' : gatewayMock ? 'Gateway · mock engine' : 'Gateway up',
+    degraded: 'Engine down',
+    down: 'Gateway down',
+  }[h.state];
   const title = h.error || (h.detail ? Object.entries(h.detail).map(([k, v]) => `${k}: ${v}`).join(' · ') : label);
   return (
     <span title={title} className="flex items-center gap-1.5 rounded bg-white/10 px-2 py-1 text-[11.5px] text-white/90">

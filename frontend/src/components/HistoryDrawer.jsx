@@ -4,7 +4,7 @@ import { ticketHref } from '../lib/useHashRoute.js';
 import { timeAgo } from '../lib/format.js';
 import { useDialog } from '../lib/useDialog.js';
 
-// FS-11 — session activity: what was triaged, viewed, moved, accepted.
+// FS-14 — session activity: what was triaged, viewed, moved, accepted.
 export default function HistoryDrawer({ onClose }) {
   const { history, byId } = useTickets();
   const ref = useDialog(onClose);

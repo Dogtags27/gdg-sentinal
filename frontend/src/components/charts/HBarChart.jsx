@@ -1,6 +1,6 @@
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 
-// FS-13 — single-series ranked horizontal bars. One series, so one color (series slot 1),
+// FS-18 — single-series ranked horizontal bars. One series, so one color (series slot 1),
 // thin bars with 4px rounded data ends, hairline grid, per-bar hover tooltip.
 const C = {
   series: 'var(--color-series-1)',

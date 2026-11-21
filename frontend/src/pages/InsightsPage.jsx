@@ -7,7 +7,7 @@ import { LANGUAGES, PIPELINE_STAGES, REASONS } from '../lib/constants.js';
 import { ms } from '../lib/format.js';
 import InsightsTab from '../features/insights/InsightsTab.jsx';
 
-// FS-13 shell: live session charts here; the Data analyst's dataset and holdout view
+// FS-18 shell: live session charts here; the Data analyst's dataset and holdout view
 // (features/insights/, DA-09/DA-10) is mounted unchanged under "Dataset & model".
 const VIEWS = [
   { id: 'session', label: 'Live session' },

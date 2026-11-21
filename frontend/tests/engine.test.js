@@ -104,6 +104,19 @@ test('normalizeTriage fills optional fields so views never crash', () => {
   assert.ok(n.created_at && n.language.code);
 });
 
+test('routing path: one confident queue, two otherwise, global fallback when the match is weak', () => {
+  const pw = analyze({ ticket_id: 'T1', subject: 'Password reset', body: 'I forgot my password, please help' });
+  assert.equal(pw.routing.queues.length, 1);
+  assert.equal(pw.routing.fallback_global, false);
+  const vague = analyze({ subject: 'Question about something', body: 'Hi there, quick question.' });
+  assert.equal(vague.routing.fallback_global, true);
+  assert.ok(vague.routing.queues.length >= 1);
+
+  const n = normalizeTriage({ ...pw, routing: { queues: [{ queue: 'IT Support', score: 'x' }, null], fallback_global: 'yes' } });
+  assert.deepEqual(n.routing, { queues: [{ queue: 'IT Support', score: null }], fallback_global: false });
+  assert.deepEqual(normalizeTriage({ ...pw, routing: undefined }).routing, { queues: [], fallback_global: false });
+});
+
 test('serverMessage reads gateway and FastAPI error shapes', () => {
   assert.equal(serverMessage({ error: { message: 'bad' } }), 'bad');
   assert.equal(serverMessage({ detail: 'nope' }), 'nope');
