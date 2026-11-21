@@ -41,15 +41,18 @@ func TestMaskSharedCases(t *testing.T) {
 	}
 }
 
-func TestMerge(t *testing.T) {
-	got := Merge(
-		[]Entity{{"EMAIL", 1}},
-		[]Entity{{"PHONE", 2}, {"EMAIL", 1}},
-		nil,
-	)
-	want := []Entity{{"EMAIL", 2}, {"PHONE", 2}}
-	if !reflect.DeepEqual(got, want) {
-		t.Errorf("Merge = %v, want %v", got, want)
+func TestMaskerSharesNumberingAcrossFields(t *testing.T) {
+	m := NewMasker()
+	subject := m.Mask("Reset for anna@example.com")
+	body := m.Mask("Hi, I am anna@example.com, my colleague is ben@example.com. Call +49 30 1234 5678.")
+	if subject != "Reset for [EMAIL_1]" {
+		t.Errorf("subject = %q", subject)
+	}
+	if want := "Hi, I am [EMAIL_1], my colleague is [EMAIL_2]. Call [PHONE_1]."; body != want {
+		t.Errorf("body = %q, want %q", body, want)
+	}
+	if want := []Entity{{"EMAIL", 3}, {"PHONE", 1}}; !reflect.DeepEqual(m.Entities(), want) {
+		t.Errorf("entities = %v, want %v", m.Entities(), want)
 	}
 }
 
@@ -80,7 +83,7 @@ func BenchmarkMask8KB(b *testing.B) {
 
 func TestEmptyResultsEncodeAsJSONArray(t *testing.T) {
 	_, masked := Mask("nothing to hide")
-	for _, v := range []any{masked, Merge()} {
+	for _, v := range []any{masked, NewMasker().Entities()} {
 		if b, _ := json.Marshal(v); string(b) != "[]" {
 			t.Errorf("JSON = %s, want []", b)
 		}

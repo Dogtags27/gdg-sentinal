@@ -136,11 +136,19 @@ function luhn(digits) {
   return sum % 10 === 0;
 }
 const PII_RULES = [
-  { type: 'EMAIL', re: /[\w.+-]+@[\w-]+\.[\w.-]+/g },
+  { type: 'EMAIL', re: /[\w.+-]+@[\w-]+(?:\.[\w-]+)+/g },
   // Compact or 4-spaced, any final group length (DE IBANs end in a 2-char group).
   { type: 'IBAN', re: /\b[A-Z]{2}\d{2}(?: ?[A-Z0-9]{4}){2,7}(?: ?[A-Z0-9]{1,3})?\b/g },
   // Grouped numbers are always masked; a bare digit run must pass Luhn so long order numbers stay readable.
   { type: 'CARD', re: /\b(?:\d[ -]?){12,18}\d\b/g, keep: (m) => !/[ -]/.test(m) && !luhn(m.replace(/\D/g, '')) },
+  {
+    type: 'ACCOUNT',
+    // Masks only the number after the label; the value needs a digit so "customer number is missing" stays.
+    re: /\b(account\s*(?:number|no\.?|nr\.?|#)|customer\s*(?:number|no\.?|id)|contract\s*(?:number|no\.?)|kontonummer|konto-?nr\.?|kundennummer|kunden-?nr\.?|vertragsnummer|vertrags-?nr\.?)(\s*(?:is\s+)?[:#]?\s*)([A-Z0-9][A-Z0-9-]{3,23})\b/gi,
+    group: 3,
+    keep: (m) => !/\d/.test(m),
+  },
+  { type: 'IP', re: /\b(?:25[0-5]|2[0-4]\d|1?\d?\d)(?:\.(?:25[0-5]|2[0-4]\d|1?\d?\d)){3}\b/g },
   {
     type: 'PHONE',
     re: /(?<![\w-])(?:\+\d{1,3}[\s-]?)?\(?0?\d{2,4}\)?[\s\-/]?\d{3,4}[\s-]?\d{3,5}(?![\w])/g,
@@ -148,24 +156,38 @@ const PII_RULES = [
     keep: (m) => !/^[+(0]/.test(m) && !/[\s\-/)]/.test(m),
   },
 ];
-export function maskPII(text) {
-  const found = {};
-  let out = text;
-  for (const { type, re, keep } of PII_RULES) {
-    out = out.replace(re, (m) => {
-      if (keep?.(m)) return m;
-      found[type] = (found[type] || 0) + 1;
-      return `[${type}]`;
-    });
-  }
-  return { text: out, entities: Object.entries(found).map(([type, count]) => ({ type, count })) };
+
+// One numbering per ticket ([EMAIL_1], [EMAIL_2], ...), shared by subject and body; a repeated value keeps
+// its number. Same as pii.Masker in Go.
+export function createMasker() {
+  const numbers = {};
+  const counts = {};
+  const placeholder = (type, value) => {
+    const byValue = (numbers[type] ??= new Map());
+    if (!byValue.has(value)) byValue.set(value, byValue.size + 1);
+    counts[type] = (counts[type] || 0) + 1;
+    return `[${type}_${byValue.get(value)}]`;
+  };
+  return {
+    mask(text) {
+      let out = text;
+      for (const { type, re, keep, group } of PII_RULES) {
+        out = out.replace(re, (m, ...groups) => {
+          if (!group) return keep?.(m) ? m : placeholder(type, m);
+          const value = groups[group - 1];
+          if (keep?.(value)) return m;
+          return groups.slice(0, group - 1).join('') + placeholder(type, value);
+        });
+      }
+      return out;
+    },
+    entities: () => PII_RULES.filter((r) => counts[r.type]).map((r) => ({ type: r.type, count: counts[r.type] })),
+  };
 }
 
-// Same as pii.Merge in Go: one entry per type, counts added.
-export function mergeEntities(...lists) {
-  const m = new Map();
-  for (const e of lists.flat()) m.set(e.type, (m.get(e.type) || 0) + e.count);
-  return [...m].map(([type, count]) => ({ type, count }));
+export function maskPII(text) {
+  const m = createMasker();
+  return { text: m.mask(text), entities: m.entities() };
 }
 
 // ---------- the pipeline ----------
@@ -176,8 +198,9 @@ export function mergeEntities(...lists) {
 export function analyze(input, ctx = {}) {
   const o = ctx.overrides || {};
   const r = mulberry32(hash(`${input.subject}\n${input.body}`));
-  const subject = maskPII(input.subject);
-  const body = maskPII(input.body);
+  const masker = createMasker();
+  const subject = { text: masker.mask(input.subject) };
+  const body = { text: masker.mask(input.body) };
   const text = `${subject.text}\n${body.text}`;
 
   // language
@@ -272,7 +295,7 @@ export function analyze(input, ctx = {}) {
     gate: { decision, reasons },
     draft,
     latency_ms: latency,
-    pii: { masked: mergeEntities(subject.entities, body.entities) },
+    pii: { masked: masker.entities() },
     burst: ctx.burst && category === 'outage' ? { cluster_id: 'BURST-VPN-01' } : null,
   };
 }

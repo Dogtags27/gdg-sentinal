@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { analyze, detectLanguage, maskPII, mergeEntities } from '../src/api/mockEngine.js';
+import { analyze, createMasker, detectLanguage, maskPII } from '../src/api/mockEngine.js';
 import { ApiError, normalizeTriage, serverMessage } from '../src/api/normalize.js';
 import { SAMPLES, OUTAGE_BURST } from '../src/data/samples.js';
 import { buildSeedTickets } from '../src/data/mockTickets.js';
@@ -58,13 +58,12 @@ test('PII masking matches the gateway cases', () => {
   }
 });
 
-test('PII counts from subject and body are merged per type', () => {
-  const r = analyze({ subject: 'Mail a@b.de', body: 'or c@d.de, call 030 1234567' });
-  assert.deepEqual(r.pii.masked, [{ type: 'EMAIL', count: 2 }, { type: 'PHONE', count: 1 }]);
-  assert.deepEqual(mergeEntities([{ type: 'EMAIL', count: 1 }], [{ type: 'PHONE', count: 2 }, { type: 'EMAIL', count: 1 }]), [
-    { type: 'EMAIL', count: 2 },
-    { type: 'PHONE', count: 2 },
-  ]);
+test('PII numbering is shared by subject and body', () => {
+  const r = analyze({ subject: 'Mail a@b.de', body: 'or c@d.de or a@b.de, call 030 1234567' });
+  assert.equal(r.subject, 'Mail [EMAIL_1]');
+  assert.equal(r.body, 'or [EMAIL_2] or [EMAIL_1], call [PHONE_1]');
+  assert.deepEqual(r.pii.masked, [{ type: 'EMAIL', count: 3 }, { type: 'PHONE', count: 1 }]);
+  assert.deepEqual(createMasker().entities(), []);
 });
 
 test('language detection', () => {
