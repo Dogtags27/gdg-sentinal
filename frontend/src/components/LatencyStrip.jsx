@@ -2,7 +2,7 @@ import { Timer } from 'lucide-react';
 import { PIPELINE_STAGES } from '../lib/constants.js';
 import { ms } from '../lib/format.js';
 
-// FS-08 — per-stage pipeline timing. Stages are an ordered sequence, so they share one hue
+// FS-11 — per-stage pipeline timing. Stages are an ordered sequence, so they share one hue
 // stepped light→dark; the label row underneath carries identity (never color alone).
 const STEPS = ['#9ec5f4', '#86b6ef', '#6da7ec', '#5598e7', '#3987e5', '#2a78d6', '#1c5cab'];
 

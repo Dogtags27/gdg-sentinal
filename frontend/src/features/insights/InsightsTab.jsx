@@ -1,136 +1,187 @@
 /**
- * DA-10: InsightsTab.jsx
- * Operational Analytics & Model Triage Insights Component
- * For SentinelDesk React Frontend (Tailwind CSS + Recharts).
+ * DA-10: InsightsTab — dataset & holdout telemetry (operations + model sub-tabs).
  */
 
-import React, { useState, useEffect } from 'react';
-import { 
-  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, 
-  PieChart, Pie, Cell, Legend 
-} from 'recharts';
-
+import { useState } from 'react';
+import {
+  BarChart3,
+  Brain,
+  Database,
+  FileText,
+  Languages,
+  Shield,
+  Siren,
+} from 'lucide-react';
+import { Bar, BarChart, Cell, Legend, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+import ChartCard from '../../components/charts/ChartCard.jsx';
+import HBarChart from '../../components/charts/HBarChart.jsx';
+import KpiCard from '../../components/KpiCard.jsx';
 import operationsData from './data/operations_insights.json';
 import modelData from './data/model_insights.json';
 
-const COLORS = ['#2563EB', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899'];
+const SERIES = ['var(--color-series-1)', '#10B981', '#F59E0B'];
 
-export const InsightsTab = () => {
+const SUB_TABS = [
+  { id: 'operations', label: 'Operational volumes', icon: Database },
+  { id: 'model', label: 'Model & gate', icon: Brain },
+];
+
+function shortQueue(name) {
+  return name.replace(' Support', '').replace(' and Maintenance', '').replace(' and Payments', '');
+}
+
+function formatExportDate(iso) {
+  if (!iso) return '—';
+  try {
+    return new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+  } catch {
+    return iso;
+  }
+}
+
+function ProvenanceFooter() {
+  return (
+    <footer className="rounded border border-line bg-white px-4 py-3 text-[11.5px] text-ink-3">
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+        <span>
+          <span className="font-medium text-ink-2">Dataset:</span> {operationsData.dataset_name}
+        </span>
+        <span>
+          <span className="font-medium text-ink-2">File:</span>{' '}
+          <code className="text-ink">{operationsData.source_file ?? '—'}</code>
+        </span>
+        <span>
+          <span className="font-medium text-ink-2">Exported (UTC):</span>{' '}
+          {formatExportDate(operationsData.generated_at)}
+        </span>
+        <span className="text-ink-3">
+          Verify: <code className="text-ink-2">{operationsData.verify_command ?? 'analytics/verify_operations_insights.py'}</code>
+        </span>
+      </div>
+    </footer>
+  );
+}
+
+function SubTabBar({ active, onChange }) {
+  return (
+    <div className="flex flex-wrap gap-1.5 border-b border-line bg-white px-5 py-2" role="tablist" aria-label="Dataset insights">
+      {SUB_TABS.map(({ id, label, icon: Icon }) => (
+        <button
+          key={id}
+          type="button"
+          role="tab"
+          aria-selected={active === id}
+          onClick={() => onChange(id)}
+          className={`flex items-center gap-1.5 rounded px-2.5 py-1 text-[12.5px] font-medium ${
+            active === id ? 'bg-brand-100 text-brand-800 ring-1 ring-brand-600/30' : 'bg-slate-100 text-ink hover:bg-slate-200'
+          }`}
+        >
+          <Icon size={14} aria-hidden />
+          {label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+export function InsightsTab() {
   const [activeSubTab, setActiveSubTab] = useState('operations');
 
-  // Format Queue Distribution Data for Recharts
   const queueChartData = Object.entries(operationsData.queues).map(([name, count]) => ({
-    name: name.replace(' Support', '').replace(' and Maintenance', ''),
+    name: shortQueue(name),
     tickets: count,
   }));
 
-  // Format Language Data
   const langChartData = Object.entries(operationsData.languages.counts).map(([lang, count]) => ({
     name: lang === 'en' ? 'English (en)' : 'German (de)',
     value: count,
   }));
 
-  // Format Priority Data
-  const priorityChartData = Object.entries(operationsData.priorities).map(([prio, count]) => ({
-    name: prio.toUpperCase(),
-    value: count,
-  }));
+  const priorityTable = Object.entries(operationsData.priorities)
+    .map(([prio, count]) => ({ label: prio.toUpperCase(), value: count }))
+    .sort((a, b) => b.value - a.value);
+
+  const criticalByQueue = Object.entries(operationsData.critical_outages?.by_queue ?? {})
+    .map(([label, value]) => ({ label: shortQueue(label), value }))
+    .sort((a, b) => b.value - a.value);
+
+  const modelFromHoldout = modelData.metrics_source === 'holdout_eval';
 
   return (
-    <div className="p-6 max-w-7xl mx-auto space-y-6">
-      
-      {/* Header & Sub-Tab Switcher */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 pb-4 border-b border-slate-200">
+    <div className="space-y-4 pt-2">
+      <header className="flex flex-col gap-2 border-b border-line pb-3 md:flex-row md:items-end md:justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
-            📊 SentinelDesk Insights & Telemetry
+          <h1 className="flex items-center gap-2 text-[18px] font-semibold text-ink">
+            <BarChart3 size={20} className="text-brand-600" aria-hidden />
+            SentinelDesk dataset insights
           </h1>
-          <p className="text-sm text-slate-500">
-            Real-time operational distribution and holdout benchmark telemetry.
-          </p>
+          <p className="text-[12.5px] text-ink-3">Historical ticket distribution and holdout benchmark telemetry.</p>
         </div>
+      </header>
 
-        <div className="flex bg-slate-100 p-1 rounded-lg border border-slate-200">
-          <button
-            onClick={() => setActiveSubTab('operations')}
-            className={`px-4 py-2 text-sm font-semibold rounded-md transition-all ${
-              activeSubTab === 'operations' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-600 hover:text-slate-900'
-            }`}
-          >
-            🏢 Operational Volumes
-          </button>
-          <button
-            onClick={() => setActiveSubTab('model')}
-            className={`px-4 py-2 text-sm font-semibold rounded-md transition-all ${
-              activeSubTab === 'model' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-600 hover:text-slate-900'
-            }`}
-          >
-            🧠 Model & Gate Performance
-          </button>
-        </div>
-      </div>
+      <SubTabBar active={activeSubTab} onChange={setActiveSubTab} />
 
-      {/* SUB-TAB 1: OPERATIONAL VOLUMES */}
       {activeSubTab === 'operations' && (
-        <div className="space-y-6">
-          
-          {/* Top KPI Strip */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
-              <div className="text-xs font-bold text-slate-500 uppercase">Total Tickets Analyzed</div>
-              <div className="text-2xl font-black text-slate-900 mt-1">{operationsData.total_volume.toLocaleString()}</div>
-              <div className="text-xs text-emerald-600 font-medium mt-1">100% Ingested & Verified</div>
-            </div>
-
-            <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
-              <div className="text-xs font-bold text-slate-500 uppercase">German (DE) Ratio</div>
-              <div className="text-2xl font-black text-slate-900 mt-1">{operationsData.languages.percentages.de}%</div>
-              <div className="text-xs text-slate-500 font-medium mt-1">{operationsData.languages.counts.de.toLocaleString()} tickets</div>
-            </div>
-
-            <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm border-l-4 border-l-red-500">
-              <div className="text-xs font-bold text-slate-500 uppercase">Critical P1 Outages</div>
-              <div className="text-2xl font-black text-red-600 mt-1">{operationsData.critical_outages.total_count.toLocaleString()}</div>
-              <div className="text-xs text-red-500 font-medium mt-1">{operationsData.critical_outages.percentage}% of total stream</div>
-            </div>
-
-            <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
-              <div className="text-xs font-bold text-slate-500 uppercase">Avg Message Body</div>
-              <div className="text-2xl font-black text-slate-900 mt-1">{operationsData.text_telemetry.avg_body_chars} chars</div>
-              <div className="text-xs text-slate-500 font-medium mt-1">Null subjects: {operationsData.text_telemetry.null_subject_pct}%</div>
-            </div>
+        <div className="space-y-4">
+          <div className="flex flex-wrap gap-3">
+            <KpiCard
+              icon={Database}
+              label="Total tickets analyzed"
+              value={operationsData.total_volume.toLocaleString()}
+              hint="Rows in the source CSV used for DA-02 export"
+            />
+            <KpiCard
+              icon={Languages}
+              label="German (DE) share"
+              value={`${operationsData.languages.percentages.de}%`}
+              unit={`(${operationsData.languages.counts.de.toLocaleString()} tickets)`}
+            />
+            <KpiCard
+              icon={Siren}
+              iconClass="text-red-700 bg-red-50"
+              label="Critical Incident + High"
+              value={operationsData.critical_outages.total_count.toLocaleString()}
+              unit={`(${operationsData.critical_outages.percentage}% of stream)`}
+            />
+            <KpiCard
+              icon={FileText}
+              label="Avg message body"
+              value={operationsData.text_telemetry.avg_body_chars}
+              unit="chars"
+              hint={`Null subjects: ${operationsData.text_telemetry.null_subject_pct}%`}
+            />
           </div>
 
-          {/* Charts Row */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            
-            {/* Queue Distribution Bar Chart */}
-            <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
-              <h3 className="font-bold text-slate-900 mb-4 flex items-center justify-between">
-                <span>📁 Volume by Department Queue</span>
-                <span className="text-xs font-normal text-slate-500">Top 10 Queues</span>
-              </h3>
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+            <ChartCard
+              title="Volume by department queue"
+              subtitle="Top queues in source dataset"
+              table={queueChartData.map((r) => ({ label: r.name, value: r.tickets }))}
+              format={(v) => v.toLocaleString()}
+            >
               <div className="h-72">
                 <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={queueChartData} margin={{ top: 10, right: 10, left: -20, bottom: 40 }}>
-                    <XAxis dataKey="name" angle={-35} textAnchor="end" interval={0} tick={{ fontSize: 11 }} />
-                    <YAxis tick={{ fontSize: 11 }} />
+                  <BarChart data={queueChartData} margin={{ top: 8, right: 8, left: -16, bottom: 48 }}>
+                    <XAxis dataKey="name" angle={-32} textAnchor="end" interval={0} tick={{ fontSize: 10, fill: 'var(--color-chart-muted)' }} />
+                    <YAxis tick={{ fontSize: 10, fill: 'var(--color-chart-muted)' }} allowDecimals={false} />
                     <Tooltip />
-                    <Bar dataKey="tickets" fill="#2563EB" radius={[4, 4, 0, 0]} />
+                    <Bar dataKey="tickets" fill="var(--color-series-1)" radius={[4, 4, 0, 0]} isAnimationActive={false} />
                   </BarChart>
                 </ResponsiveContainer>
               </div>
-            </div>
+            </ChartCard>
 
-            {/* Language & Priority Split */}
-            <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
-              <h3 className="font-bold text-slate-900 mb-4">🌐 Multilingual Distribution (EN / DE)</h3>
-              <div className="h-72 flex items-center justify-center">
+            <ChartCard
+              title="Multilingual mix (EN / DE)"
+              table={langChartData.map((r) => ({ label: r.name, value: r.value }))}
+              format={(v) => v.toLocaleString()}
+            >
+              <div className="flex h-72 items-center justify-center">
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
-                    <Pie data={langChartData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={90} label>
+                    <Pie data={langChartData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={88} label>
                       {langChartData.map((_, index) => (
-                        <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                        <Cell key={`lang-${index}`} fill={SERIES[index % SERIES.length]} />
                       ))}
                     </Pie>
                     <Tooltip />
@@ -138,73 +189,108 @@ export const InsightsTab = () => {
                   </PieChart>
                 </ResponsiveContainer>
               </div>
-            </div>
+            </ChartCard>
 
+            <ChartCard
+              title="Priority distribution"
+              subtitle="high · medium · low"
+              table={priorityTable}
+              format={(v) => v.toLocaleString()}
+            >
+              <HBarChart data={priorityTable} format={(v) => v.toLocaleString()} labelWidth={72} />
+            </ChartCard>
+
+            <ChartCard
+              title="Critical outages by queue"
+              subtitle="type = Incident and priority = high"
+              table={criticalByQueue}
+              format={(v) => v.toLocaleString()}
+            >
+              <HBarChart data={criticalByQueue} format={(v) => v.toLocaleString()} labelWidth={120} />
+            </ChartCard>
           </div>
 
+          <ProvenanceFooter />
         </div>
       )}
 
-      {/* SUB-TAB 2: MODEL & GATE PERFORMANCE */}
       {activeSubTab === 'model' && (
-        <div className="space-y-6">
-          
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
-              <div className="text-xs font-bold text-slate-500 uppercase">Type Macro-F1 (4 Classes)</div>
-              <div className="text-3xl font-black text-blue-600 mt-2">
-                {(modelData.holdout_benchmark.metrics.type_macro_f1 * 100).toFixed(1)}%
-              </div>
-              <p className="text-xs text-slate-500 mt-2">Weighted: {(modelData.holdout_benchmark.metrics.type_weighted_f1 * 100).toFixed(1)}%</p>
+        <div className="space-y-4">
+          {!modelFromHoldout && (
+            <div className="rounded border border-amber-200 bg-amber-50 px-4 py-2 text-[12px] text-amber-900" role="status">
+              Metrics are placeholders until holdout export:{' '}
+              <code className="text-[11px]">python3 src/evaluate_holdout.py --export-insights</code> then{' '}
+              <code className="text-[11px]">python3 analytics/export_model_insights.py</code>
             </div>
+          )}
 
-            <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm border-l-4 border-l-emerald-500">
-              <div className="text-xs font-bold text-slate-500 uppercase">P1 Outage Incident Recall</div>
-              <div className="text-3xl font-black text-emerald-600 mt-2">
-                {(modelData.holdout_benchmark.metrics.high_priority_incident_recall * 100).toFixed(1)}%
-              </div>
-              <p className="text-xs text-slate-500 mt-2">Tuned threshold: {modelData.safety_gate_policy.high_priority_threshold * 100}%</p>
-            </div>
-
-            <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
-              <div className="text-xs font-bold text-slate-500 uppercase">Inference Latency</div>
-              <div className="text-3xl font-black text-slate-900 mt-2">
-                {modelData.holdout_benchmark.latency.triage_inference_per_ticket_ms} ms
-              </div>
-              <p className="text-xs text-slate-500 mt-2">Sub-second end-to-end</p>
-            </div>
+          <div className="flex flex-wrap gap-3">
+            <KpiCard
+              icon={Brain}
+              label="Type macro-F1"
+              value={`${(modelData.holdout_benchmark.metrics.type_macro_f1 * 100).toFixed(1)}%`}
+              unit={`weighted ${(modelData.holdout_benchmark.metrics.type_weighted_f1 * 100).toFixed(1)}%`}
+            />
+            <KpiCard
+              icon={Siren}
+              iconClass="text-emerald-700 bg-emerald-50"
+              label="High-priority incident recall"
+              value={`${(modelData.holdout_benchmark.metrics.high_priority_incident_recall * 100).toFixed(1)}%`}
+              unit={`threshold ${(modelData.safety_gate_policy.high_priority_threshold * 100).toFixed(0)}%`}
+            />
+            <KpiCard
+              icon={BarChart3}
+              label="Triage inference"
+              value={modelData.holdout_benchmark.latency.triage_inference_per_ticket_ms}
+              unit="ms / ticket"
+              hint={`n=${modelData.holdout_benchmark.eval_sample_size} holdout sample`}
+            />
           </div>
 
-          {/* Safety Policy Rules Matrix */}
-          <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
-            <h3 className="text-base font-bold text-slate-900 mb-2">🛡️ Escalation Policy Codes (DA-06 Specification)</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-              <div className="p-4 rounded-lg bg-red-50 border border-red-200">
-                <h4 className="font-bold text-red-800 text-sm mb-2">🚨 P1 Severity → ESCALATE_ONCALL</h4>
-                <ul className="text-xs text-red-700 space-y-1">
-                  <li>• <code>HIGH_PRIORITY_INCIDENT</code>: Type=Incident & P(High) ≥ 38%</li>
-                  <li>• <code>SECURITY_INCIDENT</code>: Ransomware, breach, or hacked terms</li>
-                  <li>• <code>ACTIVE_OUTAGE</code>: Ticket joins an active burst cluster</li>
+          <ChartCard title="Escalation policy (DA-06)" subtitle="P1 → on-call · P2 → human review">
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+              <div className="rounded border border-red-200 bg-red-50 p-3">
+                <h4 className="flex items-center gap-1.5 text-[12.5px] font-semibold text-red-900">
+                  <Siren size={14} aria-hidden /> P1 → ESCALATE_ONCALL
+                </h4>
+                <ul className="mt-2 space-y-1 text-[11.5px] text-red-800">
+                  <li>
+                    <code>HIGH_PRIORITY_INCIDENT</code> — Incident &amp; P(high) ≥ threshold
+                  </li>
+                  <li>
+                    <code>SECURITY_INCIDENT</code> — breach / ransomware terms
+                  </li>
+                  <li>
+                    <code>ACTIVE_OUTAGE</code> — burst cluster
+                  </li>
                 </ul>
               </div>
-
-              <div className="p-4 rounded-lg bg-amber-50 border border-amber-200">
-                <h4 className="font-bold text-amber-800 text-sm mb-2">⚠️ P2 Severity → HUMAN_REVIEW</h4>
-                <ul className="text-xs text-amber-700 space-y-1">
-                  <li>• <code>PROMPT_INJECTION</code>: Jailbreak or override patterns</li>
-                  <li>• <code>UNSUPPORTED_REQUEST</code>: 100% refund, Bitcoin, or SLA compensation</li>
-                  <li>• <code>NO_PRECEDENT</code>: Top-1 similarity &lt; 28%</li>
-                  <li>• <code>LEGAL_OR_COMPLIANCE</code>: Lawsuit, GDPR/DSGVO, or attorney demands</li>
+              <div className="rounded border border-amber-200 bg-amber-50 p-3">
+                <h4 className="flex items-center gap-1.5 text-[12.5px] font-semibold text-amber-900">
+                  <Shield size={14} aria-hidden /> P2 → HUMAN_REVIEW
+                </h4>
+                <ul className="mt-2 space-y-1 text-[11.5px] text-amber-900">
+                  <li>
+                    <code>PROMPT_INJECTION</code>, <code>UNSUPPORTED_REQUEST</code>
+                  </li>
+                  <li>
+                    <code>NO_PRECEDENT</code>, <code>LEGAL_OR_COMPLIANCE</code>
+                  </li>
                 </ul>
               </div>
             </div>
-          </div>
+          </ChartCard>
 
+          {modelData.generated_at && (
+            <p className="text-[11.5px] text-ink-3">
+              Model metrics exported: {formatExportDate(modelData.generated_at)}
+              {modelFromHoldout ? ' (holdout eval)' : ''}
+            </p>
+          )}
         </div>
       )}
-
     </div>
   );
-};
+}
 
 export default InsightsTab;

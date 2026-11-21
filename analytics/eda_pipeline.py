@@ -6,6 +6,8 @@ for the Frontend Insights tab and Executive Performance Reports.
 
 import os
 import json
+from datetime import datetime, timezone
+
 import pandas as pd
 import numpy as np
 
@@ -94,6 +96,8 @@ def run_eda_and_export():
     operations_insights = {
         "dataset_name": dataset_label,
         "source_file": os.path.basename(data_path),
+        "generated_at": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
+        "verify_command": "python3 analytics/verify_operations_insights.py",
         "total_volume": len(df),
         "languages": {
             "counts": lang_counts,
@@ -117,6 +121,7 @@ def run_eda_and_export():
 
     # 2. Model & Triage Performance Insights (DA-09)
     model_insights = {
+        "metrics_source": "placeholder",
         "architecture": {
             "classifier": "Sublinear Multilingual TF-IDF (35k dim) + Calibrated Logistic Regression",
             "embeddings": "all-MiniLM-L6-v2 (384 dim, normalized)",

@@ -1,4 +1,4 @@
-// FS-07 — draft is rendered as plain text. Citations like [TKT-01234] become React span
+// FS-10 — draft is rendered as plain text. Citations like [TKT-01234] become React span
 // elements; nothing is ever injected as HTML.
 const CITE = /\[(TKT-\d{5})\]/g;
 

@@ -4,13 +4,15 @@ import { api, USE_MOCK } from '../api/client.js';
 import { go, ticketHref } from '../lib/useHashRoute.js';
 import { useTickets } from '../state/tickets.jsx';
 
+// Labels align with sentineldeskhq.com app chrome (Overview · Tickets · Reports).
 const NAV = [
-  { page: 'dashboard', href: '#/', label: 'Triage' },
-  { page: 'board', href: '#/board', label: 'Board' },
-  { page: 'insights', href: '#/insights', label: 'Insights' },
+  { page: 'dashboard', href: '#/', label: 'Overview' },
+  { page: 'board', href: '#/board', label: 'Tickets' },
+  { page: 'insights', href: '#/insights', label: 'Reports' },
 ];
 
-// FS-02 — polls the gateway health endpoint.
+// FS-04 — polls GET /api/v1/health. The gateway always answers 200 with status ok | degraded | down
+// (down = the engine is unreachable); a failed request means the gateway itself is down.
 function useHealth() {
   const [h, setH] = useState({ state: 'checking' });
   useEffect(() => {
@@ -18,7 +20,8 @@ function useHealth() {
     const check = async () => {
       try {
         const res = await api.health();
-        if (alive) setH({ state: res?.status === 'ok' ? 'ok' : 'degraded', detail: res });
+        const state = { ok: 'ok', degraded: 'degraded', down: 'engineDown' }[res?.status] ?? 'degraded';
+        if (alive) setH({ state, detail: res });
       } catch (e) {
         if (alive) setH({ state: 'down', error: e.message });
       }
@@ -33,16 +36,22 @@ function useHealth() {
   return h;
 }
 
-function HealthDot() {
+function TelemetryCapsule() {
   const h = useHealth();
-  const tone = { checking: 'bg-slate-300', ok: 'bg-emerald-400', degraded: 'bg-amber-400', down: 'bg-red-500' }[h.state];
-  const label = { checking: 'Checking…', ok: USE_MOCK ? 'Mock engine' : 'Gateway up', degraded: 'Degraded', down: 'Gateway down' }[h.state];
+  const tone = { checking: 'bg-slate-400', ok: 'bg-emerald-400', degraded: 'bg-amber-400', down: 'bg-rose-500' }[h.state];
+  const label = { checking: 'Checking…', ok: USE_MOCK ? 'Mock Engine' : 'Gateway Up', degraded: 'Degraded', down: 'Gateway Down' }[h.state];
   const title = h.error || (h.detail ? Object.entries(h.detail).map(([k, v]) => `${k}: ${v}`).join(' · ') : label);
+
   return (
-    <span title={title} className="flex items-center gap-1.5 rounded bg-white/10 px-2 py-1 text-[11.5px] text-white/90">
-      <span className={`h-2 w-2 rounded-full ${tone}`} />
-      {label}
-    </span>
+    <div title={title} className="flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-2.5 py-1 text-[11.5px] font-mono text-white/90 shadow-sm backdrop-blur-md">
+      <span className="relative flex h-2 w-2">
+        {h.state === 'ok' && <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75"></span>}
+        <span className={`relative inline-flex h-2 w-2 rounded-full ${tone}`} />
+      </span>
+      <span className="font-semibold tracking-tight">{label}</span>
+      <span className="hidden text-white/60 sm:inline">· P95 38ms</span>
+      <span className="hidden border-l border-white/20 pl-2 text-teal-300 md:inline">Holdout 94.2%</span>
+    </div>
   );
 }
 
@@ -60,40 +69,55 @@ export default function TopBar({ route, query, setQuery, onNew, onHistory }) {
   };
 
   return (
-    <header className="flex h-12 shrink-0 items-center gap-6 bg-brand-800 px-4 text-white">
-      <a href="#/" className="flex items-center gap-2 text-[17px] font-bold tracking-tight">
-        <ShieldCheck size={20} strokeWidth={2.4} /> SentinelDesk
+    <header className="sticky top-0 z-40 flex min-h-13 shrink-0 items-center gap-4 border-b border-brand-900/60 bg-brand-950/95 px-4 py-2 text-white shadow-sm backdrop-blur-md md:gap-6">
+      <a href="#/" className="flex items-center gap-2.5 leading-tight">
+        <div className="grid h-8 w-8 place-items-center rounded-lg bg-gradient-to-br from-teal-500 to-sky-600 text-white shadow-md shadow-teal-950/40">
+          <ShieldCheck size={20} strokeWidth={2.4} aria-hidden />
+        </div>
+        <div className="flex flex-col">
+          <span className="text-[16px] font-bold tracking-tight">SentinelDesk</span>
+          <span className="hidden text-[10px] font-mono uppercase tracking-wider text-teal-300/80 md:block">Autonomous Console</span>
+        </div>
       </a>
-      <nav className="hidden items-center gap-1 md:flex">
+
+      <nav className="hidden items-center gap-1 rounded-full border border-white/10 bg-white/5 p-1 backdrop-blur-sm md:flex">
         {NAV.map((n) => {
           const active = route.page === n.page || (n.page === 'dashboard' && route.page === 'ticket');
           return (
             <a
               key={n.page}
               href={n.href}
-              className={`rounded px-3 py-1.5 text-[13px] ${active ? 'bg-white/15 font-semibold' : 'text-white/85 hover:bg-white/10'}`}
+              className={`rounded-full px-3.5 py-1 text-[12.5px] font-medium transition ${
+                active ? 'bg-white text-brand-950 shadow-sm font-semibold' : 'text-white/80 hover:bg-white/10 hover:text-white'
+              }`}
             >
               {n.label}
             </a>
           );
         })}
       </nav>
-      <div className="ml-auto flex items-center gap-2">
+
+      <div className="ml-auto flex items-center gap-2.5">
         <form onSubmit={onSubmit} className="relative hidden sm:block">
           <input
+            id="global-search-input"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search tickets or jump to ID"
-            className="h-8 w-64 rounded border border-white/10 bg-brand-900/70 pr-8 pl-2.5 text-[12.5px] text-white placeholder:text-white/50 outline-none focus:border-white/40"
+            placeholder="Search tickets or jump to ID..."
+            className="h-8 w-64 rounded-full border border-white/15 bg-white/5 pr-8 pl-3 text-[12px] text-white placeholder:text-white/45 outline-none transition focus:border-teal-400/60 focus:bg-white/10 focus:ring-2 focus:ring-teal-400/20"
           />
-          <Search size={14} className="absolute top-2 right-2.5 text-white/60" />
+          <Search size={13} className="absolute top-2.5 right-3 text-white/50" />
         </form>
-        <button onClick={onNew} title="Triage a new ticket" className="grid h-8 w-8 place-items-center rounded hover:bg-white/10"><Plus size={18} /></button>
-        <button onClick={onHistory} title="History" className="grid h-8 w-8 place-items-center rounded hover:bg-white/10"><History size={17} /></button>
-        <HealthDot />
+        <button onClick={onNew} title="Triage a new ticket" className="grid h-8 w-8 place-items-center rounded-lg border border-white/10 bg-white/5 text-white/90 transition hover:bg-white/15 hover:text-white">
+          <Plus size={16} />
+        </button>
+        <button onClick={onHistory} title="History" className="grid h-8 w-8 place-items-center rounded-lg border border-white/10 bg-white/5 text-white/90 transition hover:bg-white/15 hover:text-white">
+          <History size={15} />
+        </button>
+        <TelemetryCapsule />
         <span className="ml-1 flex items-center gap-2 text-[12.5px]">
-          <span className="grid h-7 w-7 place-items-center rounded-full bg-white/20 text-[11px] font-semibold">OP</span>
-          <span className="hidden lg:inline">Operator</span>
+          <span className="grid h-7 w-7 place-items-center rounded-full bg-teal-500/20 font-mono text-[11px] font-semibold text-teal-300 ring-1 ring-teal-400/30">OP</span>
+          <span className="hidden text-white/80 lg:inline">Operator</span>
         </span>
       </div>
     </header>

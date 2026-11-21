@@ -3,8 +3,9 @@ import { Inbox, Layers, Loader2, Plus } from 'lucide-react';
 import { ConfidenceBar, LangBadge, PriorityBadge, ReasonChip } from '../components/Badges.jsx';
 import { useTickets } from '../state/tickets.jsx';
 import { PRIORITIES, WORKFLOW } from '../lib/constants.js';
-import { overallConfidence, timeAgo } from '../lib/format.js';
+import { overallConfidence, ticketTitle, timeAgo } from '../lib/format.js';
 import { ticketHref } from '../lib/useHashRoute.js';
+import PageHeader from '../components/PageHeader.jsx';
 
 const COLUMN_ACCENT = {
   new: 'border-t-teal-400',
@@ -50,16 +51,20 @@ export default function KanbanBoard({ query, setQuery, onNew }) {
   };
 
   return (
-    <div className="flex h-full flex-col px-5 py-3">
-      <div className="text-[12.5px] text-ink-2">Incident Triage <span className="mx-1 text-ink-3">/</span> Board</div>
-      <div className="mt-3 flex flex-wrap items-center gap-2">
-        <h1 className="text-[22px] font-semibold">Ticket Board</h1>
-        <span className="text-[12.5px] text-ink-3">{filtered.length} tickets</span>
-        <button onClick={onNew} className="ml-auto flex items-center gap-1.5 rounded bg-brand-700 px-3 py-1.5 text-[12.5px] font-medium text-white hover:bg-brand-800">
-          <Plus size={14} /> New ticket
-        </button>
-      </div>
-      <p className="mt-1 text-[13px] text-ink-2">The gate decision sets each ticket's starting column. Drag cards to move them through the workflow.</p>
+    <div className="flex h-full flex-col px-5 py-4">
+      <PageHeader
+        eyebrow="Team tracks progress"
+        title="Tickets"
+        description="From ticket to resolution in minutes — every card shows gate outcome, priority, and workflow stage."
+        actions={(
+          <>
+            <span className="self-center text-[12.5px] text-ink-3">{filtered.length} active</span>
+            <button onClick={onNew} className="flex items-center gap-1.5 rounded bg-brand-700 px-3 py-1.5 text-[12.5px] font-medium text-white shadow-sm hover:bg-brand-800">
+              <Plus size={14} /> New ticket
+            </button>
+          </>
+        )}
+      />
 
       <div className="mt-3 flex flex-wrap items-center gap-2">
         <input
@@ -150,7 +155,7 @@ function Card({ t, dragging, onDragStart, onDragEnd, onMove }) {
         <LangBadge code={t.language.code} />
         <span className="ml-auto"><PriorityBadge priority={c.priority.label} /></span>
       </div>
-      <a href={ticketHref(t.ticket_id)} className="mt-1.5 line-clamp-2 block text-[12.5px] leading-snug font-medium text-ink hover:text-brand-700">{t.subject}</a>
+      <a href={ticketHref(t.ticket_id)} className="mt-1.5 line-clamp-2 block text-[12.5px] leading-snug font-medium text-ink hover:text-brand-700">{ticketTitle(t)}</a>
       <div className="mt-1 text-[11.5px] text-ink-2">{c.type.label} · {c.queue.label}</div>
       {shown.length > 0 && (
         <div className="mt-1.5 flex flex-wrap gap-1">

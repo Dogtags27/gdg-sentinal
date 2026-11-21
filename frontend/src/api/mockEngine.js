@@ -1,8 +1,8 @@
-// In-browser stand-in for gateway + engine so the console is never blocked (pairs with H-06).
+// In-browser stand-in for gateway + engine so the console is never blocked (the gateway has its own, FS-03).
 // Deterministic: the same subject/body always produces the same result.
-// Shapes here are the PROVISIONAL TriageResult — reconcile with contracts/ once H-02 lands.
+// Results follow contract v1 (contracts/README.md, TriageResponse).
 
-import { GATE_THRESHOLDS, REASONS } from '../lib/constants.js';
+import { GATE_THRESHOLDS, QUEUES, REASONS } from '../lib/constants.js';
 
 const { precedentSimilarity: SIM_THRESHOLD, confidenceFloor: CONF_FLOOR, highPriority: P_HIGH_THRESHOLD } = GATE_THRESHOLDS;
 
@@ -120,9 +120,33 @@ const BODY = {
     general: 'vielen Dank für Ihre Nachricht. Wir haben Ihre Anfrage erhalten und ein Teammitglied kümmert sich darum [c0]. Weitere Details wie Screenshots helfen uns, schneller zu antworten [c1].',
   },
 };
+// Extractive replies quote exactly one precedent (contract v1, "Draft modes").
 const FALLBACK = {
-  en: 'Thank you for your message. Similar tickets were resolved as described in [c0] and [c1]. An agent will review and complete this reply.',
-  de: 'vielen Dank für Ihre Nachricht. Ähnliche Tickets wurden wie in [c0] und [c1] beschrieben gelöst. Ein Mitarbeiter prüft und ergänzt diese Antwort.',
+  en: 'Thank you for your message. A similar ticket was resolved as described in [c0]. An agent will review and complete this reply.',
+  de: 'vielen Dank für Ihre Nachricht. Ein ähnliches Ticket wurde wie in [c0] beschrieben gelöst. Ein Mitarbeiter prüft und ergänzt diese Antwort.',
+};
+
+// Same wording as engine/app/generate/fallbacks.py: promises nothing and cites nothing.
+const HOLDING = {
+  en: 'Thank you for your message. We have received your request, and a specialist will review it and reply as soon as possible.',
+  de: 'vielen Dank für Ihre Nachricht. Wir haben Ihre Anfrage erhalten; eine Fachkraft prüft sie und meldet sich so schnell wie möglich bei Ihnen.',
+};
+
+// First lines of the historical agent answers shown as precedents[].answer_snippet.
+const ANSWERS = {
+  security: 'We isolated the affected server, restored the files from the last clean backup and reset all admin credentials.',
+  outage: 'The VPN concentrator had stopped accepting new sessions. We failed over to the standby node and all sites reconnected.',
+  money: 'The billing team reviewed the account and replied with the outcome; no refund was promised in the first response.',
+  legal: 'The request was forwarded to the data protection officer, who confirmed the deletion in writing within the legal deadline.',
+  billing: 'Invoices are available under Account → Billing. We reissued the invoice with the corrected VAT number.',
+  password: 'After verifying the account owner we triggered a manual password reset and the customer could sign in again.',
+  feature: 'Logged with the product team as a feature request; the customer was told there is no committed timeline.',
+  product: 'Updating to the latest version and clearing the local cache resolved the crash for this customer.',
+  general: 'We answered the question and pointed the customer to the relevant help-centre article.',
+};
+const TAGS = {
+  security: ['security', 'incident'], outage: ['vpn', 'network', 'outage'], money: ['refund', 'billing'], legal: ['gdpr', 'privacy'],
+  billing: ['invoice', 'billing'], password: ['password', 'account'], feature: ['feature', 'product'], product: ['crash', 'update'], general: ['general'],
 };
 
 // ---------- gateway PII masking (mirrors backend/internal/pii; shared cases in its testdata/cases.json) ----------
@@ -135,37 +159,78 @@ function luhn(digits) {
   }
   return sum % 10 === 0;
 }
+const digitCount = (m) => m.replace(/\D/g, '').length;
+// Card-style grouping: 4-4-4-4 (optionally a short fifth group) or Amex 4-6-5.
+function cardShaped(m) {
+  const l = m.split(/[ -]+/).filter(Boolean).map((g) => g.length);
+  if (l.length === 3) return l[0] === 4 && l[1] === 6 && (l[2] === 5 || l[2] === 4);
+  if (l.length === 4 || l.length === 5) return l[0] === 4 && l[1] === 4 && l[2] === 4 && l[3] === 4 && (l.length === 4 || l[4] <= 3);
+  return false;
+}
 const PII_RULES = [
-  { type: 'EMAIL', re: /[\w.+-]+@[\w-]+\.[\w.-]+/g },
-  // Compact or 4-spaced, any final group length (DE IBANs end in a 2-char group).
-  { type: 'IBAN', re: /\b[A-Z]{2}\d{2}(?: ?[A-Z0-9]{4}){2,7}(?: ?[A-Z0-9]{1,3})?\b/g },
-  // Grouped numbers are always masked; a bare digit run must pass Luhn so long order numbers stay readable.
-  { type: 'CARD', re: /\b(?:\d[ -]?){12,18}\d\b/g, keep: (m) => !/[ -]/.test(m) && !luhn(m.replace(/\D/g, '')) },
+  { type: 'EMAIL', re: /[\p{L}\p{N}_.+-]+@[\p{L}\p{N}_-]+(?:\.[\p{L}\p{N}_-]+)+/gu },
+  // Compact or 4-spaced, any letter case; real IBANs are mostly digits, which keeps "ab12 this that" text.
+  { type: 'IBAN', re: /\b[A-Z]{2}\d{2}(?: ?[A-Z0-9]{4}){2,7}(?: ?[A-Z0-9]{1,3})?\b/gi, keep: (m) => digitCount(m) < 10 },
+  {
+    type: 'CARD',
+    re: /\b(?:\d[ -]?){12,18}\d\b/g,
+    // Luhn or card-style grouping; after "+" or with a leading 00 it is an international phone number.
+    keep: (m, prev) => prev === '+' || m.startsWith('00') || (!luhn(m.replace(/\D/g, '')) && !cardShaped(m)),
+  },
+  {
+    type: 'ACCOUNT',
+    // Masks only the number after the label; the value needs a digit so "customer number is missing" stays.
+    re: /\b(account\s*(?:number|no\.?|nr\.?|#)|customer\s*(?:number|no\.?|id|#)|contract\s*(?:number|no\.?)|kontonummer|konto-?nr\.?|kundennummern?|kunden-?nr\.?|kd\.?-?nr\.?|vertragsnummer|vertrags-?nr\.?)((?:\s+(?:is|ist|lautet|lautete|was|war))?\s*[:#]?\s*)([A-Z0-9][A-Z0-9-]{3,23}(?: \d[A-Z0-9-]{0,9}){0,6})\b/gi,
+    group: 3,
+    keep: (m) => !/\d/.test(m),
+  },
+  // IPv4, full IPv6, and compressed IPv6 with "::".
+  { type: 'IP', re: /\b(?:(?:25[0-5]|2[0-4]\d|1?\d?\d)(?:\.(?:25[0-5]|2[0-4]\d|1?\d?\d)){3}|(?:[0-9a-f]{1,4}:){7}[0-9a-f]{1,4}|(?:[0-9a-f]{1,4}:){1,6}:(?:[0-9a-f]{1,4}:){0,5}[0-9a-f]{1,4})\b/gi },
   {
     type: 'PHONE',
-    re: /(?<![\w-])(?:\+\d{1,3}[\s-]?)?\(?0?\d{2,4}\)?[\s\-/]?\d{3,4}[\s-]?\d{3,5}(?![\w])/g,
-    // A bare digit run like an order number is not a phone: needs +, a leading 0, or separators.
-    keep: (m) => !/^[+(0]/.test(m) && !/[\s\-/)]/.test(m),
+    re: /(?<![\w-])(?:\+\d{1,3}[ \t-]?(?:\(0\)[ \t]?)?)?\(?0?\d{2,5}\)?(?:[ \t]{0,2}\/[ \t]{0,2}|[ \t-])?\d{2,8}(?:[ \t-]\d{2,8}){0,4}(?![\w])/g,
+    // Fewer than 7 digits (years, times) is not a phone, nor is a bare digit run like an order number.
+    keep: (m) => digitCount(m) < 7 || (!/^[+(0]/.test(m) && !/[ \t\-/)]/.test(m)),
   },
 ];
-export function maskPII(text) {
-  const found = {};
-  let out = text;
-  for (const { type, re, keep } of PII_RULES) {
-    out = out.replace(re, (m) => {
-      if (keep?.(m)) return m;
-      found[type] = (found[type] || 0) + 1;
-      return `[${type}]`;
-    });
-  }
-  return { text: out, entities: Object.entries(found).map(([type, count]) => ({ type, count })) };
+// Plain spaces replace Unicode ones first, so "030 1234567" from a mail signature is caught.
+const UNICODE_SPACES = /[  -   　]/g;
+
+// One numbering per ticket ([EMAIL_1], [EMAIL_2], ...), shared by subject and body; a repeated value (any
+// letter case) keeps its number. Same as pii.Masker in Go.
+export function createMasker() {
+  const numbers = {};
+  const counts = {};
+  const placeholder = (type, value) => {
+    const key = value.toLowerCase();
+    const byValue = (numbers[type] ??= new Map());
+    if (!byValue.has(key)) byValue.set(key, byValue.size + 1);
+    counts[type] = (counts[type] || 0) + 1;
+    return `[${type}_${byValue.get(key)}]`;
+  };
+  return {
+    mask(text) {
+      let out = text.replace(UNICODE_SPACES, ' ');
+      for (const { type, re, keep, group } of PII_RULES) {
+        out = out.replace(re, (m, ...args) => {
+          const groups = args.slice(0, -2);
+          const offset = args[args.length - 2];
+          const whole = args[args.length - 1];
+          if (!group) return keep?.(m, whole[offset - 1] ?? '') ? m : placeholder(type, m);
+          const value = groups[group - 1];
+          if (keep?.(value)) return m;
+          return groups.slice(0, group - 1).join('') + placeholder(type, value);
+        });
+      }
+      return out;
+    },
+    entities: () => PII_RULES.filter((r) => counts[r.type]).map((r) => ({ type: r.type, count: counts[r.type] })),
+  };
 }
 
-// Same as pii.Merge in Go: one entry per type, counts added.
-export function mergeEntities(...lists) {
-  const m = new Map();
-  for (const e of lists.flat()) m.set(e.type, (m.get(e.type) || 0) + e.count);
-  return [...m].map(([type, count]) => ({ type, count }));
+export function maskPII(text) {
+  const m = createMasker();
+  return { text: m.mask(text), entities: m.entities() };
 }
 
 // ---------- the pipeline ----------
@@ -175,125 +240,209 @@ export function mergeEntities(...lists) {
  */
 export function analyze(input, ctx = {}) {
   const o = ctx.overrides || {};
-  const r = mulberry32(hash(`${input.subject}\n${input.body}`));
-  const subject = maskPII(input.subject);
-  const body = maskPII(input.body);
-  const text = `${subject.text}\n${body.text}`;
+  const r = mulberry32(hash(`${input.subject ?? ''}\n${input.body}`));
+  const masker = createMasker();
+  const subject = masker.mask(input.subject ?? '');
+  const body = masker.mask(input.body);
+  const text = `${subject}\n${body}`;
 
   // language
-  const language = detectLanguage(text);
-  const draftLang = language.code === 'de' ? 'de' : 'en';
+  const detected = detectLanguage(text);
+  const language = { ...detected, supported: SUPPORTED.includes(detected.code) };
+  const draftLang = language.supported ? language.code : 'en';
 
   // category + flags
   const hits = Object.fromEntries(Object.keys(KW).map((g) => [g, firstHit(g, text)]));
   const category = o.category || CATEGORY_ORDER.find((c) => hits[c]) || 'general';
   const p = PROFILE[category];
 
-  // classify (calibrated confidences, jittered deterministically)
+  // classify: each head's confidence is probs[label], as the contract requires
   const confBase = o.confidence ?? p.conf;
   const pHigh = round2(Math.min(0.98, Math.max(0.02, p.pHigh + between(r, -0.04, 0.04))));
   const priorityLabel = o.priority || (pHigh >= P_HIGH_THRESHOLD ? 'high' : p.priority);
   const k = 5;
+  const typeLabel = o.type || p.type;
+  const queueLabel = o.queue || p.queue;
+  const typeProbs = spread(typeLabel, round2(Math.min(0.99, confBase + between(r, 0, 0.06))), TYPES);
+  const queueProbs = spread(queueLabel, round2(Math.min(0.99, confBase + between(r, -0.05, 0.02))), queueOrder(queueLabel).slice(0, 5), 0.93);
+  const priorityProbs = priorityLabel === 'high'
+    ? { high: pHigh, ...splitRest(['medium', 'low'], 1 - pHigh) }
+    : { high: pHigh, [priorityLabel]: round2((1 - pHigh) * 0.8), [priorityLabel === 'medium' ? 'low' : 'medium']: round2(1 - pHigh - round2((1 - pHigh) * 0.8)) };
   const strong = confBase >= 0.75;
   const classification = {
-    type: { label: o.type || p.type, confidence: round2(Math.min(0.99, confBase + between(r, 0, 0.06))) },
-    queue: { label: o.queue || p.queue, confidence: round2(Math.min(0.99, confBase + between(r, -0.05, 0.02))), votes: strong ? 4 + Math.round(r()) : 2 + Math.round(r()), k },
-    priority: { label: priorityLabel, confidence: round2(Math.min(0.99, confBase + between(r, -0.06, 0.03))), p_high: pHigh },
+    type: { label: typeLabel, confidence: typeProbs[typeLabel], probs: typeProbs },
+    queue: { label: queueLabel, confidence: queueProbs[queueLabel], probs: queueProbs, votes: strong ? 4 + Math.round(r()) : 2 + Math.round(r()), k },
+    priority: { label: priorityLabel, confidence: priorityProbs[priorityLabel], probs: priorityProbs, p_high: pHigh },
   };
 
-  // retrieve
+  // retrieve: level 1 routes to the top queue (or top two when unsure), level 2 searches inside them
   const top = Math.min(0.97, (o.similarity ?? p.sim) + between(r, -0.03, 0.03));
-  const precedents = BANK[category].map(([id, subj, lang], i) => ({
+  // Tickets matching no known topic find nothing in the knowledge base, so the draft is a holding reply.
+  const precedents = (category === 'general' ? [] : BANK[category]).map(([id, subj, lang], i) => ({
     ticket_id: id,
-    subject: subj,
-    language: lang,
     similarity: round2(top - i * between(r, 0.03, 0.07)),
+    language: lang,
     type: p.type,
     queue: p.queue,
     priority: p.priority,
+    subject: subj,
+    answer_snippet: i === 0 ? ANSWERS[category] : 'Resolved after the customer confirmed the suggested steps worked.',
+    tags: TAGS[category],
   }));
+  const top1 = precedents[0]?.similarity ?? 0;
+  const route = routeQueues(queueLabel, classification.queue.confidence, top, top1);
+  const retrieval = { route, top_similarity: top1, k };
 
   // gate
   const reasons = [];
   const add = (code, detail) => reasons.push({ code, severity: REASONS[code].severity, detail });
   if (classification.type.label === 'Incident' && pHigh >= P_HIGH_THRESHOLD) add('HIGH_PRIORITY_INCIDENT', `P(high) = ${pHigh.toFixed(2)} ≥ threshold ${P_HIGH_THRESHOLD}`);
   if (hits.security) add('SECURITY_INCIDENT', `Matched “${hits.security}”`);
-  if (ctx.burst && category === 'outage') add('ACTIVE_OUTAGE', 'Joined burst cluster BURST-VPN-01');
+  const burst = ctx.burst && category === 'outage' ? joinBurst(queueLabel) : null;
+  if (burst) add('ACTIVE_OUTAGE', `Joined burst cluster ${burst.cluster_id} (${burst.ticket_count} tickets)`);
   if (hits.legal) add('LEGAL_OR_COMPLIANCE', `Matched “${hits.legal}”`);
   if (hits.injection) add('PROMPT_INJECTION', `Matched “${hits.injection}”`);
-  if (precedents[0].similarity < SIM_THRESHOLD) add('NO_PRECEDENT', `Top-1 similarity ${precedents[0].similarity.toFixed(2)} < ${SIM_THRESHOLD}`);
+  if (top1 < SIM_THRESHOLD) add('NO_PRECEDENT', precedents.length ? `Top-1 similarity ${top1.toFixed(2)} < ${SIM_THRESHOLD}` : 'No similar ticket in the knowledge base');
   const minConf = Math.min(classification.type.confidence, classification.queue.confidence, classification.priority.confidence);
   if (minConf < CONF_FLOOR) add('LOW_CONFIDENCE', `Calibrated confidence ${minConf.toFixed(2)} < floor ${CONF_FLOOR}`);
   if (hits.money) add('UNSUPPORTED_REQUEST', `Matched “${hits.money}” — no commitments in draft`);
   if (o.ungrounded) add('UNGROUNDED_DRAFT', 'Claim “within 2 business days” not found in cited precedents after retry');
-  if (!['en', 'de'].includes(language.code)) add('UNSUPPORTED_LANGUAGE', `Detected ${language.code.toUpperCase()} (${Math.round(language.confidence * 100)}%)`);
+  if (!language.supported) add('UNSUPPORTED_LANGUAGE', `Detected ${language.code.toUpperCase()} (${Math.round(language.confidence * 100)}%)`);
   if (o.degraded) add('ENGINE_DEGRADED', 'Gemini timed out after 8 s — extractive fallback used');
 
   const decision = reasons.some((x) => x.severity === 'P1') ? 'ESCALATE_ONCALL' : reasons.length ? 'HUMAN_REVIEW' : 'AUTO_DRAFT';
 
   // draft + validate
-  const c0 = precedents[0].ticket_id;
-  const c1 = precedents[1].ticket_id;
+  const c0 = precedents[0]?.ticket_id;
+  const c1 = precedents[1]?.ticket_id;
   const core = (o.degraded ? FALLBACK : BODY)[draftLang];
   const coreText = typeof core === 'string' ? core : core[category];
   let draftText = HELLO[draftLang] + coreText.replace('[c0]', `[${c0}]`).replace('[c1]', `[${c1}]`) + SIGN[draftLang];
   if (o.ungrounded) draftText = draftText.replace(SIGN[draftLang], ` We will resolve this within 2 business days.${SIGN[draftLang]}`);
+  const holding = precedents.length === 0;
+  if (holding) draftText = HELLO[draftLang] + HOLDING[draftLang] + SIGN[draftLang];
   const draft = {
     language: draftLang,
     text: draftText,
-    citations: [c0, c1],
-    mode: o.degraded ? 'extractive' : 'generated',
+    citations: holding ? [] : o.degraded ? [c0] : [c0, c1],
+    mode: holding ? 'holding' : o.degraded ? 'extractive' : 'generated',
     validation: o.ungrounded
-      ? { passed: false, citations_ok: true, numbers_ok: false, retries: 1, issues: ['“2 business days” is not supported by any cited precedent'] }
-      : { passed: true, citations_ok: true, numbers_ok: true, retries: 0, issues: [] },
+      ? { passed: false, citations_ok: true, numbers_ok: false, language_ok: true, retries: 1, issues: ['“2 business days” is not supported by any cited precedent.'] }
+      : { passed: true, citations_ok: true, numbers_ok: true, language_ok: true, retries: 0, issues: [] },
   };
 
   // latency (ms)
   const latency = {
-    gateway: between(r, 3, 9),
-    language: between(r, 2, 6),
-    classify: between(r, 12, 28),
-    retrieve: between(r, 38, 95),
-    gate: between(r, 1, 3),
-    draft: o.degraded ? 8000 + between(r, 20, 60) : between(r, 650, 1750),
-    validate: between(r, 14, 42),
+    gateway: round1(between(r, 3, 9)),
+    language: round1(between(r, 2, 6)),
+    classify: round1(between(r, 12, 28)),
+    retrieve: round1(between(r, 90, 180)),
+    gate: round1(between(r, 1, 3)),
+    draft: round1(o.degraded ? 8000 + between(r, 20, 60) : between(r, 650, 1750)),
+    validate: round1(between(r, 14, 42)),
   };
-  latency.total = Object.values(latency).reduce((a, b) => a + b, 0);
+  latency.total = round1(Object.values(latency).reduce((a, b) => a + b, 0) + 1);
 
+  const createdAt = input.created_at || new Date().toISOString();
   return {
+    contract_version: '1.0',
+    request_id: input.request_id || `req_${hex(6)}`,
     ticket_id: input.ticket_id,
-    subject: subject.text,
-    body: body.text,
-    created_at: input.created_at || new Date().toISOString(),
-    processed_at: new Date().toISOString(),
+    subject,
+    body,
+    created_at: createdAt,
+    processed_at: new Date(Math.max(Date.now(), Date.parse(createdAt))).toISOString(),
     language,
+    pii: { masked: masker.entities() },
     classification,
+    retrieval,
     precedents,
     gate: { decision, reasons },
     draft,
+    burst,
     latency_ms: latency,
-    pii: { masked: mergeEntities(subject.entities, body.entities) },
-    burst: ctx.burst && category === 'outage' ? { cluster_id: 'BURST-VPN-01' } : null,
+    warnings: o.degraded ? [{ stage: 'draft', code: 'LLM_TIMEOUT', message: 'The LLM did not answer within 8 s; the reply quotes the best precedent instead.' }] : [],
   };
 }
 
+const SUPPORTED = ['en', 'de'];
+const TYPES = ['Incident', 'Request', 'Problem', 'Change'];
+
+// Gives label its probability and spreads `mass` of the rest over the other keys, largest first.
+function spread(label, p, keys, mass = 1) {
+  const others = keys.filter((x) => x !== label);
+  return { [label]: p, ...splitRest(others, Math.max(0, mass - p)) };
+}
+function splitRest(keys, rest) {
+  const weights = keys.map((_, i) => 2 ** (keys.length - i));
+  const sum = weights.reduce((a, b) => a + b, 0);
+  const out = {};
+  let left = round2(rest);
+  keys.forEach((key, i) => {
+    const v = i === keys.length - 1 ? left : round2((rest * weights[i]) / sum);
+    out[key] = Math.max(0, round2(v));
+    left = round2(left - out[key]);
+  });
+  return out;
+}
+
+// Level 1 of the hierarchical retrieval (root README): keep the top queue when it scores at least 0.80,
+// else search the top two. route.queues holds the top 3 level-1 scores.
+const RUNNER_UP = {
+  'Service Outages and Maintenance': 'IT Support',
+  'IT Support': 'Technical Support',
+  'Billing and Payments': 'Customer Service',
+  'Customer Service': 'General Inquiry',
+  'Product Support': 'Technical Support',
+  'Technical Support': 'Product Support',
+  'General Inquiry': 'Customer Service',
+};
+function queueOrder(label) {
+  const second = RUNNER_UP[label];
+  return [label, ...(second ? [second] : []), ...QUEUES.filter((x) => x !== label && x !== second)];
+}
+function routeQueues(label, queueConf, top, top1) {
+  const first = round2(0.6 * queueConf + 0.4 * top);
+  const [, second, third] = queueOrder(label);
+  const queues = [
+    { queue: label, score: first },
+    { queue: second, score: round2(first * 0.45) },
+    { queue: third, score: round2(first * 0.12) },
+  ];
+  const fallback = top1 < SIM_THRESHOLD;
+  const searched = first >= 0.8 ? [label] : [label, second];
+  return { queues, searched: fallback ? [] : searched, fallback_global: fallback };
+}
+
+// Session-wide outage cluster for "Simulate outage", shaped like contract v1's burst object.
+let burstState = null;
+function joinBurst(queue) {
+  const now = new Date().toISOString();
+  burstState = burstState
+    ? { ...burstState, ticket_count: burstState.ticket_count + 1, last_seen: now }
+    : { cluster_id: 'BURST-VPN-SERVICE', queue, lead_term: 'vpn', ticket_count: 1, first_seen: now, last_seen: now };
+  return { ...burstState };
+}
+
+const round1 = (x) => Math.round(x * 10) / 10;
+const hex = (bytes) => Array.from({ length: bytes * 2 }, () => Math.floor(Math.random() * 16).toString(16)).join('');
+
 // ---------- fake transport ----------
-let liveCounter = 1;
 const sleep = (n) => new Promise((res) => setTimeout(res, n));
 
 export const mockApi = {
   async health() {
     await sleep(120);
-    return { status: 'ok', mode: 'mock', engine: 'mock', qdrant: 'mock' };
+    return { status: 'degraded', mode: 'mock', contract_version: '1.0', components: { gateway: 'stub', engine: 'stub', vector_db: 'stub' } };
   },
   async triage(input, { burst = false } = {}) {
-    if (!input.subject?.trim() && !input.body?.trim()) {
-      const e = new Error('Subject or body is required.');
-      e.code = 'VALIDATION';
+    if (!input.body?.trim()) {
+      const e = new Error('body: must be 1 to 10,000 characters and not only whitespace.');
+      e.code = 'VALIDATION_ERROR';
       throw e;
     }
     await sleep(500 + Math.random() * 700);
-    const id = input.ticket_id || `LIVE-${String(liveCounter++).padStart(4, '0')}`;
+    const id = input.ticket_id || `LIVE-${hex(4).toUpperCase()}`;
     return analyze({ ...input, ticket_id: id }, { burst });
   },
 };
